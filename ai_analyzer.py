@@ -526,3 +526,133 @@ def analyze_bid_complete(bid_data: Dict, sow_text: str = "", pdf_path: str = Non
         "sow_summary": final_sow_text,
         "analyzed_at": time.strftime('%Y-%m-%d %H:%M:%S')
     }
+
+
+# =============================================================================
+# A&D CONSULTING INTELLIGENCE INTEGRATION
+# =============================================================================
+
+def analyze_tender_ad_intelligence(bid_data: Dict, sow_text: str = "", pdf_path: str = None) -> Dict[str, Any]:
+    """
+    Comprehensive A&D Consulting Intelligence analysis.
+    
+    Combines:
+    - Rule-based A&D domain scoring (6-component weighted algorithm)
+    - Pattern detection for consulting vs goods classification
+    - AI-powered executive summary and risk assessment
+    
+    Args:
+        bid_data: Bid information dictionary
+        sow_text: Scope of Work text (optional)
+        pdf_path: Path to PDF for Virtual User extraction
+        
+    Returns:
+        Complete A&D intelligence analysis with:
+        - A&D relevance score (0-100)
+        - Sub-category classification
+        - Risk assessment
+        - Recommendation (PURSUE/EVALUATE/PASS)
+        - AI-generated insights
+    """
+    try:
+        # Import A&D modules
+        from ad_scorer import (
+            analyze_tender_for_ad_consulting,
+            generate_risk_assessment,
+            generate_tender_summary
+        )
+        from pattern_detector import is_consulting_tender
+        
+        logger.info(f"Running A&D Intelligence analysis for: {bid_data.get('Bid Number')}")
+        
+        # Step 1: Extract SOW if PDF provided
+        final_sow_text = sow_text
+        if pdf_path and os.path.exists(pdf_path):
+            from virtual_agent import BidReaderAgent
+            try:
+                agent = BidReaderAgent(pdf_path)
+                final_sow_text = agent.summarize_sow()
+                logger.info("SOW extracted by Virtual User")
+            except Exception as e:
+                logger.warning(f"Virtual User extraction failed: {e}")
+        
+        # Add SOW to tender data for analysis
+        tender_data = dict(bid_data)
+        tender_data['sow_text'] = final_sow_text
+        
+        # Step 2: Run A&D scoring algorithm
+        ad_analysis = analyze_tender_for_ad_consulting(tender_data)
+        
+        # Step 3: Run pattern detection
+        full_text = f"{bid_data.get('Items', '')} {bid_data.get('Department', '')} {final_sow_text}"
+        is_consulting, consulting_prob, pattern_summary = is_consulting_tender(full_text)
+        
+        # Step 4: Generate risk assessment
+        risk_assessment = generate_risk_assessment(tender_data, ad_analysis)
+        
+        # Step 5: Generate tender summary  
+        tender_summary = generate_tender_summary(tender_data, ad_analysis)
+        
+        # Step 6: Run AI analysis for additional insights
+        ai_insights = None
+        if ad_analysis.get('a_d_relevance_score', 0) >= 50:
+            cfs = calculate_consulting_fit_score(bid_data)
+            ai_insights = {
+                "cfs_score": cfs.get('score', 0),
+                "cfs_verdict": cfs.get('verdict', 'N/A'),
+                "cfs_reasoning": cfs.get('reasoning', '')
+            }
+        
+        # Combine all results
+        result = {
+            "tender_id": bid_data.get('Bid Number', 'N/A'),
+            "title": bid_data.get('Items', bid_data.get('title', 'N/A')),
+            
+            # A&D Intelligence Scores
+            "is_consulting": round(consulting_prob, 2),
+            "is_government_buyer": ad_analysis.get('is_government_buyer', True),
+            "a_d_relevance_score": ad_analysis.get('a_d_relevance_score', 0),
+            
+            # Classifications
+            "consulting_category": ad_analysis.get('consulting_category', 'Unknown'),
+            "a_d_sub_category": ad_analysis.get('a_d_sub_category', 'Unknown'),
+            
+            # Confidence & Recommendation
+            "confidence": ad_analysis.get('confidence', 50),
+            "recommendation": ad_analysis.get('recommendation', 'EVALUATE'),
+            
+            # Detailed Analysis
+            "matched_keywords": ad_analysis.get('matched_keywords', []),
+            "matched_patterns": ad_analysis.get('matched_patterns', []) + pattern_summary,
+            "score_components": ad_analysis.get('score_components', {}),
+            
+            # Summary & Risk
+            "summary": tender_summary,
+            "risk_assessment": risk_assessment,
+            
+            # AI Insights
+            "ai_insights": ai_insights,
+            
+            # Reasoning
+            "reasoning": ad_analysis.get('reasoning', ''),
+            "interpretation": ad_analysis.get('interpretation', {}),
+            
+            # Metadata
+            "sow_extracted": bool(final_sow_text),
+            "analyzed_at": time.strftime('%Y-%m-%d %H:%M:%S')
+        }
+        
+        logger.info(f"A&D Analysis complete: Score={result['a_d_relevance_score']}, Rec={result['recommendation']}")
+        return result
+        
+    except ImportError as e:
+        logger.error(f"A&D modules not available: {e}")
+        # Fallback to standard analysis
+        return analyze_bid_complete(bid_data, sow_text, pdf_path)
+    except Exception as e:
+        logger.error(f"A&D analysis failed: {e}")
+        return {
+            "error": str(e),
+            "fallback_analysis": analyze_bid_complete(bid_data, sow_text, pdf_path)
+        }
+
