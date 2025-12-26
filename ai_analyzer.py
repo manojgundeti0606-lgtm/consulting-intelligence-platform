@@ -17,6 +17,7 @@ import json
 import time
 import random
 import logging
+import threading
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from dotenv import load_dotenv
@@ -47,6 +48,7 @@ class RateLimiter:
     """
     Token bucket rate limiter with jitter for API calls.
     Implements proactive throttling to prevent rate limit errors.
+    Thread-safe with internal locking.
     """
     
     def __init__(self, calls_per_minute: int = 15, jitter_range: tuple = (0.5, 1.5)):
@@ -56,32 +58,39 @@ class RateLimiter:
         self.last_call_time = 0.0
         self.tokens = calls_per_minute
         self.last_refill = time.time()
+        self._lock = threading.Lock()  # Thread-safety lock
     
     def wait_if_needed(self) -> float:
         """
         Wait if necessary to respect rate limits.
         Returns the actual wait time in seconds.
+        Thread-safe implementation.
         """
-        current_time = time.time()
+        with self._lock:
+            current_time = time.time()
+            
+            # Refill tokens based on elapsed time
+            elapsed = current_time - self.last_refill
+            tokens_to_add = elapsed / self.min_interval
+            self.tokens = min(self.calls_per_minute, self.tokens + tokens_to_add)
+            self.last_refill = current_time
+            
+            # If we have tokens, use one
+            if self.tokens >= 1:
+                self.tokens -= 1
+                wait_time = 0.0
+            else:
+                # Need to wait for a token
+                wait_time = self.min_interval * random.uniform(*self.jitter_range)
+                logger.debug(f"Rate limiting: waiting {wait_time:.2f}s")
+                self.tokens = 0
+            
+            self.last_call_time = time.time()
         
-        # Refill tokens based on elapsed time
-        elapsed = current_time - self.last_refill
-        tokens_to_add = elapsed / self.min_interval
-        self.tokens = min(self.calls_per_minute, self.tokens + tokens_to_add)
-        self.last_refill = current_time
-        
-        # If we have tokens, use one
-        if self.tokens >= 1:
-            self.tokens -= 1
-            wait_time = 0.0
-        else:
-            # Need to wait for a token
-            wait_time = self.min_interval * random.uniform(*self.jitter_range)
-            logger.debug(f"Rate limiting: waiting {wait_time:.2f}s")
+        # Sleep outside the lock to avoid blocking other threads
+        if wait_time > 0:
             time.sleep(wait_time)
-            self.tokens = 0
         
-        self.last_call_time = time.time()
         return wait_time
 
 

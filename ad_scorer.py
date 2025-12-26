@@ -361,8 +361,8 @@ class ADScorer:
             else:
                 try:
                     return float(budget)
-                except:
-                    pass
+                except ValueError:
+                    logger.debug(f"Could not parse budget string: {budget}")
         
         return 0
     
@@ -389,8 +389,8 @@ class ADScorer:
                 today = datetime.now()
                 months = (end.year - today.year) * 12 + (end.month - today.month)
                 return max(0, months)
-            except:
-                pass
+            except (ValueError, TypeError) as e:
+                logger.debug(f"Could not calculate duration from end_date: {e}")
         
         return None
     
@@ -539,7 +539,7 @@ def generate_tender_summary(tender_data: Dict, ad_analysis: Dict) -> Dict[str, A
     return {
         "buyer": tender_data.get('Department', tender_data.get('department', 'Unknown')),
         "scope": tender_data.get('Items', tender_data.get('description', 'See tender document')),
-        "budget": f"₹{ad_analysis.get('score_components', {}).get('budget_alignment', 0)/10:.1f} Cr (estimated)",
+        "budget": tender_data.get('budget', tender_data.get('Budget', 'TBD')),
         "duration": f"{tender_data.get('duration', 'TBD')} months",
         "key_deliverables": ["As per tender document - requires SOW extraction"],
         "required_qualifications": ["Government consulting experience", "Domain expertise"]
