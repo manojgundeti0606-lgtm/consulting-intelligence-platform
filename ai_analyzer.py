@@ -1,7 +1,22 @@
 """
 AI Analyzer Module - Gemini Integration
 Provides consulting fit scoring, go/no-go analysis, and executive summaries
+
+This module integrates with Google's Gemini AI to analyze government bids
+and determine their fit for consulting firms. Key features:
+- Consulting Fit Score (CFS) calculation
+- Go/No-Go decision matrix
+- Executive summary generation
+
+Author: Manoj Gundeti
+Last Updated: 2025-12-26
 """
+
+# TODO: CodeRabbit - Please review this module for:
+# - Error handling completeness
+# - API rate limiting best practices  
+# - Security considerations for API key handling
+# - Code quality and maintainability
 
 import os
 import json
