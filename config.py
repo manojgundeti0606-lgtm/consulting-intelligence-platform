@@ -134,7 +134,7 @@ NOTIFICATION_CONFIG = {
     "digest_format": "json",  # json or markdown
     "digest_path": "digests",
     "min_cfs_score": 50,  # Only include bids with CFS >= 50 in digest
-    "enable_email": False,
+    "enable_email": True,  # Send email digest after daily scrape
     "enable_slack": False
 }
 

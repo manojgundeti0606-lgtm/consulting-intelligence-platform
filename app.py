@@ -22,6 +22,327 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Modern UI Styling - Premium Dark Theme with Glassmorphism
+st.markdown("""
+<style>
+    /* Import Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    /* Root Variables */
+    :root {
+        --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        --gradient-success: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        --gradient-warning: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        --gradient-info: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        --glass-bg: rgba(255, 255, 255, 0.05);
+        --glass-border: rgba(255, 255, 255, 0.1);
+        --card-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+    }
+    
+    /* Global Styles */
+    .stApp {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    /* Main Container Background */
+    .main .block-container {
+        padding: 2rem 3rem;
+        max-width: 1400px;
+    }
+    
+    /* Sidebar Styling */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
+        border-right: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    [data-testid="stSidebar"] .stRadio > label {
+        color: rgba(255, 255, 255, 0.9) !important;
+    }
+    
+    /* Sidebar Items */
+    [data-testid="stSidebar"] [data-testid="stMarkdown"] {
+        color: rgba(255, 255, 255, 0.85);
+    }
+    
+    /* Headers with Gradient */
+    h1 {
+        background: var(--gradient-primary);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        font-weight: 700 !important;
+        letter-spacing: -0.5px;
+    }
+    
+    h2 {
+        color: #e0e0e0 !important;
+        font-weight: 600 !important;
+        border-bottom: 2px solid rgba(102, 126, 234, 0.5);
+        padding-bottom: 0.5rem;
+    }
+    
+    h3 {
+        color: #b8b8b8 !important;
+        font-weight: 500 !important;
+    }
+    
+    /* Card Styling */
+    [data-testid="stExpander"] {
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        border-radius: 16px;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        box-shadow: var(--card-shadow);
+        transition: all 0.3s ease;
+    }
+    
+    [data-testid="stExpander"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.45);
+        border-color: rgba(102, 126, 234, 0.4);
+    }
+    
+    /* Button Styling */
+    .stButton > button {
+        background: var(--gradient-primary) !important;
+        border: none !important;
+        border-radius: 12px !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.3px;
+        padding: 0.6rem 1.5rem !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6) !important;
+    }
+    
+    /* Primary Button */
+    .stButton > button[kind="primary"] {
+        background: var(--gradient-success) !important;
+        box-shadow: 0 4px 15px rgba(17, 153, 142, 0.4);
+    }
+    
+    /* Metrics Styling */
+    [data-testid="stMetric"] {
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        border-radius: 16px;
+        padding: 1.2rem !important;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+    }
+    
+    [data-testid="stMetricLabel"] {
+        color: rgba(255, 255, 255, 0.7) !important;
+        font-size: 0.85rem !important;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    
+    [data-testid="stMetricValue"] {
+        background: var(--gradient-primary);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        font-size: 2rem !important;
+        font-weight: 700 !important;
+    }
+    
+    /* Input Fields */
+    .stTextInput > div > div > input,
+    .stSelectbox > div > div > div,
+    .stMultiSelect > div > div > div {
+        background: rgba(255, 255, 255, 0.05) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-radius: 12px !important;
+        color: white !important;
+    }
+    
+    .stTextInput > div > div > input:focus {
+        border-color: #667eea !important;
+        box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.3) !important;
+    }
+    
+    /* Tabs Styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background: transparent;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        border-radius: 12px;
+        padding: 0.8rem 1.5rem;
+        transition: all 0.3s ease;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background: var(--gradient-primary) !important;
+        border: none !important;
+    }
+    
+    /* Success/Info/Warning/Error Messages */
+    .stSuccess {
+        background: linear-gradient(135deg, rgba(17, 153, 142, 0.2) 0%, rgba(56, 239, 125, 0.2) 100%) !important;
+        border: 1px solid rgba(56, 239, 125, 0.3) !important;
+        border-radius: 12px !important;
+    }
+    
+    .stInfo {
+        background: linear-gradient(135deg, rgba(79, 172, 254, 0.2) 0%, rgba(0, 242, 254, 0.2) 100%) !important;
+        border: 1px solid rgba(79, 172, 254, 0.3) !important;
+        border-radius: 12px !important;
+    }
+    
+    .stWarning {
+        background: linear-gradient(135deg, rgba(240, 147, 251, 0.2) 0%, rgba(245, 87, 108, 0.2) 100%) !important;
+        border: 1px solid rgba(245, 87, 108, 0.3) !important;
+        border-radius: 12px !important;
+    }
+    
+    /* Dataframe Styling */
+    [data-testid="stDataFrame"] {
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid var(--glass-border);
+    }
+    
+    /* Progress Bar */
+    .stProgress > div > div > div > div {
+        background: var(--gradient-primary) !important;
+        border-radius: 10px;
+    }
+    
+    /* Divider */
+    hr {
+        border: none;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.5), transparent);
+        margin: 1.5rem 0;
+    }
+    
+    /* Score Badge Styling */
+    .score-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.4rem 1rem;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 0.9rem;
+    }
+    
+    .score-high {
+        background: linear-gradient(135deg, rgba(17, 153, 142, 0.3), rgba(56, 239, 125, 0.3));
+        color: #38ef7d;
+        border: 1px solid rgba(56, 239, 125, 0.4);
+    }
+    
+    .score-medium {
+        background: linear-gradient(135deg, rgba(255, 193, 7, 0.3), rgba(255, 152, 0, 0.3));
+        color: #ffc107;
+        border: 1px solid rgba(255, 193, 7, 0.4);
+    }
+    
+    .score-low {
+        background: linear-gradient(135deg, rgba(244, 67, 54, 0.3), rgba(211, 47, 47, 0.3));
+        color: #f44336;
+        border: 1px solid rgba(244, 67, 54, 0.4);
+    }
+    
+    /* Recommendation Badges */
+    .rec-pursue {
+        background: var(--gradient-success);
+        color: white;
+        padding: 0.3rem 0.8rem;
+        border-radius: 8px;
+        font-weight: 600;
+        display: inline-block;
+    }
+    
+    .rec-evaluate {
+        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+        padding: 0.3rem 0.8rem;
+        border-radius: 8px;
+        font-weight: 600;
+        display: inline-block;
+    }
+    
+    .rec-pass {
+        background: linear-gradient(135deg, #636363 0%, #434343 100%);
+        color: white;
+        padding: 0.3rem 0.8rem;
+        border-radius: 8px;
+        font-weight: 600;
+        display: inline-block;
+    }
+    
+    /* Popover Styling */
+    [data-testid="stPopover"] {
+        background: rgba(26, 26, 46, 0.95) !important;
+        border: 1px solid var(--glass-border) !important;
+        border-radius: 16px !important;
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+    }
+    
+    /* Radio Buttons Styling */
+    [data-testid="stRadio"] > div {
+        gap: 0.5rem;
+    }
+    
+    [data-testid="stRadio"] label {
+        background: var(--glass-bg);
+        border: 1px solid var(--glass-border);
+        border-radius: 12px;
+        padding: 0.8rem 1rem !important;
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+    
+    [data-testid="stRadio"] label:hover {
+        background: rgba(102, 126, 234, 0.15);
+        border-color: rgba(102, 126, 234, 0.4);
+    }
+    
+    /* Spinner */
+    .stSpinner > div {
+        border-color: #667eea !important;
+    }
+    
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.05);
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, #667eea, #764ba2);
+        border-radius: 10px;
+    }
+    
+    /* Animation for cards */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .element-container {
+        animation: fadeIn 0.3s ease-out;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 def display_sow_button(bid, key_suffix):
     """Helper to display SOW button and handle logic"""
     bid_num = bid.get('Bid Number') or bid.get('bid_number')
@@ -41,6 +362,207 @@ def display_sow_button(bid, key_suffix):
                     st.error(f"Error analyzing document: {e}")
             else:
                 st.error("Failed to download document.")
+
+def display_full_analysis_button(bid, key_suffix):
+    """
+    Combined SOW extraction + AI Analysis button.
+    Stores results in session state for full-width display.
+    """
+    bid_num = bid.get('Bid Number') or bid.get('bid_number')
+    analysis_key = f"analysis_result_{bid_num}"
+    
+    if st.button("🔍 Full Analysis", key=f"full_analysis_{bid_num}_{key_suffix}", type="primary"):
+        # Store that we're running analysis for this bid
+        st.session_state[f"running_analysis_{bid_num}"] = True
+        st.session_state[analysis_key] = None  # Clear previous
+        st.rerun()
+
+
+def run_and_display_analysis(bid, key_suffix):
+    """
+    Run analysis and display results in full width.
+    Called outside of columns for proper layout.
+    """
+    bid_num = bid.get('Bid Number') or bid.get('bid_number')
+    analysis_key = f"analysis_result_{bid_num}"
+    running_key = f"running_analysis_{bid_num}"
+    
+    # Check if analysis was requested
+    if st.session_state.get(running_key):
+        with st.container():
+            with st.spinner("🔄 Running comprehensive analysis..."):
+                doc_link = bid.get('Document Link') or bid.get('document_link')
+                
+                # Progress display
+                progress_container = st.empty()
+                progress_container.info("📥 Step 1/3: Downloading document...")
+                doc_path = download_document(doc_link, bid_data=bid)
+                
+                if not doc_path:
+                    progress_container.error("❌ Failed to download document.")
+                    st.session_state[running_key] = False
+                    return
+                
+                try:
+                    progress_container.info("📋 Step 2/3: Extracting Scope of Work...")
+                    agent = BidReaderAgent(doc_path)
+                    sow_summary = agent.summarize_sow()
+                    
+                    progress_container.info("🤖 Step 3/3: Running AI analysis...")
+                    from ai_analyzer import analyze_bid_complete, analyze_tender_ad_intelligence
+                    
+                    # Try A&D intelligence analysis
+                    try:
+                        ad_analysis = analyze_tender_ad_intelligence(bid, sow_text=sow_summary, pdf_path=doc_path)
+                        has_ad_analysis = True
+                    except Exception:
+                        ad_analysis = None
+                        has_ad_analysis = False
+                    
+                    # Standard CFS analysis
+                    full_analysis = analyze_bid_complete(bid, sow_text=sow_summary, pdf_path=doc_path)
+                    
+                    # Save to database
+                    st.session_state.db.save_ai_analysis(full_analysis)
+                    
+                    # Store results
+                    st.session_state[analysis_key] = {
+                        'sow': sow_summary,
+                        'cfs': full_analysis,
+                        'ad': ad_analysis,
+                        'has_ad': has_ad_analysis,
+                        'bid_num': bid_num
+                    }
+                    
+                    progress_container.success("✅ Analysis Complete!")
+                    st.session_state[running_key] = False
+                    
+                except Exception as e:
+                    progress_container.error(f"❌ Error: {str(e)}")
+                    st.session_state[running_key] = False
+                    return
+    
+    # Display stored results if available
+    if st.session_state.get(analysis_key):
+        result = st.session_state[analysis_key]
+        
+        with st.expander(f"📊 Analysis Results: {result['bid_num']}", expanded=True):
+            # Create full-width tabbed display
+            tab1, tab2, tab3 = st.tabs(["📋 SOW Summary", "🎯 AI Analysis", "📊 A&D Intelligence"])
+            
+            with tab1:
+                st.markdown("### Scope of Work Summary")
+                st.markdown(result['sow'])
+            
+            with tab2:
+                st.markdown("### AI Analysis Results")
+                
+                # CFS Score cards in columns
+                cfs = result['cfs'].get('cfs', {})
+                score = cfs.get('score', 0)
+                verdict = cfs.get('verdict', 'N/A')
+                rec = result['cfs'].get('go_no_go', {}).get('overall_recommendation', 'N/A')
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    score_color = "#11998e" if score >= 70 else "#f5a623" if score >= 50 else "#e74c3c"
+                    st.markdown(f"""
+                    <div style='text-align: center; padding: 20px; 
+                         background: linear-gradient(135deg, {score_color}dd, {score_color}aa); 
+                         color: white; border-radius: 16px; margin: 5px;'>
+                        <div style='font-size: 2.5rem; font-weight: bold;'>{score}</div>
+                        <div style='font-size: 0.95rem; opacity: 0.9;'>CFS Score</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with col2:
+                    rec_color = "#11998e" if rec == "GO" else "#e74c3c" if rec == "NO_GO" else "#f5a623"
+                    st.markdown(f"""
+                    <div style='text-align: center; padding: 20px; 
+                         background: linear-gradient(135deg, {rec_color}dd, {rec_color}aa); 
+                         color: white; border-radius: 16px; margin: 5px;'>
+                        <div style='font-size: 1.8rem; font-weight: bold;'>{rec}</div>
+                        <div style='font-size: 0.95rem; opacity: 0.9;'>Recommendation</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with col3:
+                    st.markdown(f"""
+                    <div style='text-align: center; padding: 20px; 
+                         background: linear-gradient(135deg, #667eeadd, #764ba2aa); 
+                         color: white; border-radius: 16px; margin: 5px;'>
+                        <div style='font-size: 1.4rem; font-weight: bold;'>{verdict}</div>
+                        <div style='font-size: 0.95rem; opacity: 0.9;'>Verdict</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                st.markdown("---")
+                
+                # Reasoning
+                if cfs.get('reasoning'):
+                    st.markdown("**💡 AI Reasoning:**")
+                    st.info(cfs['reasoning'])
+                
+                # Executive Summary
+                exec_summary = result['cfs'].get('executive_summary', {})
+                if exec_summary and isinstance(exec_summary, dict):
+                    st.markdown("**📝 Executive Summary:**")
+                    if exec_summary.get('the_ask'):
+                        st.markdown(f"**The Ask:** {exec_summary['the_ask']}")
+                    if exec_summary.get('key_deliverables'):
+                        st.markdown("**Key Deliverables:**")
+                        for d in exec_summary['key_deliverables']:
+                            st.markdown(f"  • {d}")
+            
+            with tab3:
+                if result['has_ad'] and result['ad']:
+                    st.markdown("### A&D Intelligence Analysis")
+                    
+                    ad = result['ad']
+                    ad_score = ad.get('a_d_relevance_score', 0)
+                    ad_rec = ad.get('recommendation', 'EVALUATE')
+                    
+                    # Score metrics
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("A&D Score", f"{ad_score:.0f}/100")
+                    with col2:
+                        st.metric("Confidence", f"{ad.get('confidence', 50):.0f}%")
+                    with col3:
+                        st.metric("Category", ad.get('a_d_sub_category', 'N/A'))
+                    with col4:
+                        rec_emoji = "🟢" if ad_rec == "PURSUE" else "🟡" if ad_rec == "EVALUATE" else "🔴"
+                        st.metric("Action", f"{rec_emoji} {ad_rec}")
+                    
+                    st.markdown("---")
+                    
+                    # Risk Assessment
+                    risk = ad.get('risk_assessment', {})
+                    if risk:
+                        st.markdown("**⚠️ Risk Assessment:**")
+                        cols = st.columns(4)
+                        risk_items = [
+                            ("Implementation", risk.get('implementation_risk', 'N/A')),
+                            ("Scope Creep", risk.get('scope_creep_risk', 'N/A')),
+                            ("Political", risk.get('political_risk', 'N/A')),
+                            ("Win Prob.", risk.get('win_probability', 'N/A'))
+                        ]
+                        for col, (label, value) in zip(cols, risk_items):
+                            with col:
+                                color = "#11998e" if value == "Low" else "#f5a623" if value == "Medium" else "#e74c3c"
+                                st.markdown(f"**{label}:** <span style='color: {color}'>{value}</span>", unsafe_allow_html=True)
+                    
+                    # Matched Keywords
+                    keywords = ad.get('matched_keywords', [])
+                    if keywords:
+                        st.markdown("**🏷️ Matched Keywords:**")
+                        st.write(", ".join(str(k) for k in keywords[:15]))
+                else:
+                    st.info("A&D Intelligence analysis not available.")
+            
+            # Close button
+            if st.button("❌ Close Analysis", key=f"close_analysis_{result['bid_num']}_{key_suffix}"):
+                st.session_state[f"analysis_result_{result['bid_num']}"] = None
+                st.rerun()
+
 
 def extract_links_from_pdf_file(pdf_path):
     """Extract all URLs/links from a PDF file using PyMuPDF (most reliable method)"""
@@ -346,31 +868,20 @@ if page == "🔍 Intelligence Dashboard":
                             st.caption(f"{icon} {rec}")
                     
                     # Actions
-                    col1, col2, col3, col4, col5 = st.columns(5)
+                    col1, col2, col3, col4 = st.columns(4)
                     with col1:
-                        if st.button(f"⭐ Add to Watchlist", key=f"watch_{bid['Bid Number']}_{i}"):
+                        if st.button(f"⭐ Watchlist", key=f"watch_{bid['Bid Number']}_{i}"):
                             st.session_state.db.add_to_watchlist(bid['Bid Number'])
-                            st.success("Added to watchlist!")
+                            st.success("Added!")
                     with col2:
-                        st.link_button("📄 View Document", bid.get('Document Link', '#'))
+                        st.link_button("📄 Document", bid.get('Document Link', '#'))
                     with col3:
-                        display_sow_button(bid, f"dashboard_{i}")
-                    with col4:
                         display_links_button(bid, f"dashboard_{i}")
-                    with col5:
-                        with st.popover("🤖 AI Analysis"):
-                            # Show full analysis from database
-                            full_analysis = st.session_state.db.get_bid_with_analysis(bid['Bid Number'])
-                            if full_analysis and full_analysis.get('cfs_reasoning'):
-                                st.markdown(f"**Reasoning:** {full_analysis['cfs_reasoning']}")
-                                if full_analysis.get('executive_summary'):
-                                    summary = full_analysis['executive_summary']
-                                    st.markdown(f"**The Ask:** {summary.get('the_ask', 'N/A')}")
-                                    st.markdown("**Key Deliverables:**")
-                                    for d in summary.get('key_deliverables', []):
-                                        st.markdown(f"- {d}")
-                            else:
-                                st.info("Analysis not available")
+                    with col4:
+                        display_full_analysis_button(bid, f"dashboard_{i}")
+                
+                # Display analysis results in full width (outside columns)
+                run_and_display_analysis(bid, f"dashboard_{i}")
         
         else:  # Table view
             df = pd.DataFrame(filtered_results)

@@ -52,8 +52,28 @@ class CIPAgent:
             print(f"Downloading document for bid {bid['Bid Number']}...")
             pdf_path = download_document(bid['Document Link'], bid_data=bid)
             
+            # Extract SOW using Virtual User
+            sow_summary = ""
+            if pdf_path:
+                try:
+                    from virtual_agent import BidReaderAgent
+                    agent = BidReaderAgent(pdf_path)
+                    sow_summary = agent.summarize_sow()
+                    print(f"  SOW extracted: {len(sow_summary)} chars")
+                except Exception as e:
+                    print(f"  SOW extraction failed: {e}")
+            
             # Run AI analysis with Virtual User
-            analysis = analyze_bid_complete(bid, pdf_path=pdf_path)
+            analysis = analyze_bid_complete(bid, pdf_path=pdf_path, sow_text=sow_summary)
+            
+            # Run A&D Intelligence Analysis
+            ad_analysis = None
+            try:
+                from ai_analyzer import analyze_tender_ad_intelligence
+                ad_analysis = analyze_tender_ad_intelligence(bid, sow_text=sow_summary, pdf_path=pdf_path)
+                print(f"  A&D Score: {ad_analysis.get('a_d_relevance_score', 0):.0f}, Rec: {ad_analysis.get('recommendation', 'N/A')}")
+            except Exception as e:
+                print(f"  A&D analysis failed: {e}")
             
             # Save analysis
             self.db.save_ai_analysis(analysis)
@@ -64,18 +84,36 @@ class CIPAgent:
 
             analyzed_bids.append({
                 "bid": bid,
-                "analysis": analysis
+                "analysis": analysis,
+                "ad_analysis": ad_analysis,
+                "sow_summary": sow_summary
             })
             
             # Filter high-fit bids
             if analysis['cfs']['score'] >= NOTIFICATION_CONFIG['min_cfs_score']:
                 high_fit_bids.append({
                     "bid": bid,
-                    "analysis": analysis
+                    "analysis": analysis,
+                    "ad_analysis": ad_analysis,
+                    "sow_summary": sow_summary
                 })
         
         # Generate and save digest
         self.generate_digest(high_fit_bids)
+        
+        # Send email notification if enabled
+        if NOTIFICATION_CONFIG.get('enable_email', False):
+            try:
+                from email_notifier import send_email_digest
+                print(f"Sending email digest with {len(high_fit_bids)} high-fit bids...")
+                if send_email_digest(high_fit_bids):
+                    print("✅ Email digest sent successfully!")
+                else:
+                    print("⚠️ Failed to send email digest")
+            except ImportError:
+                print("⚠️ Email module not available")
+            except Exception as e:
+                print(f"⚠️ Email error: {str(e)}")
         
         print(f"Daily run complete. Analyzed {len(analyzed_bids)} bids, {len(high_fit_bids)} high-fit")
         return len(high_fit_bids)
