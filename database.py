@@ -350,8 +350,8 @@ class CIPDatabase:
             if res.get('exec_summary_json'):
                 try:
                     res['executive_summary'] = json.loads(res['exec_summary_json'])
-                except:
-                    pass
+                except json.JSONDecodeError:
+                    pass  # Invalid JSON, skip parsing
             
             results.append(res)
             

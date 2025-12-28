@@ -640,7 +640,7 @@ def generate_daily_digest(
     
     try:
         user_tz = pytz.timezone(user_tz_str)
-    except:
+    except pytz.UnknownTimeZoneError:
         user_tz = pytz.timezone('Asia/Kolkata')
     
     today = datetime.now(user_tz)
@@ -656,10 +656,10 @@ def generate_daily_digest(
                     dt = datetime.strptime(iso_str[:19], fmt)
                     dt = pytz.UTC.localize(dt).astimezone(user_tz)
                     return dt.strftime('%d %b %Y, %I:%M %p')
-                except:
+                except ValueError:
                     continue
             return iso_str
-        except:
+        except (ValueError, AttributeError):
             return iso_str
     
     def summarize_sow(sow: str) -> str:
@@ -679,10 +679,10 @@ def generate_daily_digest(
         published = bid.get('published_at') or bid.get('Start Date') or ''
         try:
             return datetime.strptime(published[:19], '%Y-%m-%d %H:%M:%S')
-        except:
+        except ValueError:
             try:
                 return datetime.strptime(published[:10], '%Y-%m-%d')
-            except:
+            except ValueError:
                 return datetime.min
     
     sorted_bids = sorted(bids, key=get_published_for_sort, reverse=True)

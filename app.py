@@ -743,7 +743,7 @@ if not is_logged_in():
                     # Only use OAuth if real credentials are set (not placeholders)
                     if client_id and "YOUR_GOOGLE_CLIENT_ID" not in client_id:
                         google_configured = True
-            except:
+            except (json.JSONDecodeError, KeyError, FileNotFoundError):
                 google_configured = False
         
         if google_configured:
@@ -1114,7 +1114,8 @@ if page == "🔎 Scraper":
                                 if doc_path:
                                     try:
                                         sow = BidReaderAgent(doc_path).summarize_sow()
-                                    except: pass
+                                    except Exception:  # SOW extraction may fail for various reasons
+                                        pass
                                 analysis = analyze_bid_complete(bid, pdf_path=doc_path, sow_text=sow)
                                 st.session_state.db.save_ai_analysis(analysis)
                                 analyzed_bids.append({**bid, 'CFS Score': analysis['cfs']['score'],

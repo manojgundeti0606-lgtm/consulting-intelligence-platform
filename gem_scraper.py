@@ -353,7 +353,7 @@ def download_document(url, save_dir="downloads", bid_data=None):
             dt = datetime.strptime(start_date, '%Y-%m-%d')
             year = str(dt.year)
             month = f"{dt.month:02d}"
-        except:
+        except (ValueError, TypeError):
             year = datetime.now().strftime('%Y')
             month = datetime.now().strftime('%m')
         

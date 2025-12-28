@@ -25,7 +25,7 @@ def verify_password(password: str, stored_hash: str) -> bool:
         salt, expected_hash = stored_hash.split('$')
         actual_hash = hashlib.sha256((password + salt).encode()).hexdigest()
         return actual_hash == expected_hash
-    except:
+    except (ValueError, AttributeError):
         return False
 
 
@@ -64,16 +64,16 @@ class AuthManager:
         # Add new columns if they don't exist (for migration)
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN auth_method TEXT DEFAULT 'local'")
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN google_id TEXT")
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         try:
             cursor.execute("ALTER TABLE users ADD COLUMN profile_picture TEXT")
-        except:
-            pass
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         
         conn.commit()
         conn.close()
