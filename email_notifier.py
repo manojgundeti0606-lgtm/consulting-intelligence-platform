@@ -27,10 +27,43 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 
+def _parse_smtp_port(default: int = 587) -> int:
+    """
+    Safely parse SMTP_PORT from environment variable.
+    Falls back to default if parsing fails or value is invalid.
+    
+    Args:
+        default: Default port to use if parsing fails (587 for TLS)
+        
+    Returns:
+        Valid SMTP port as integer
+    """
+    port_str = os.getenv("SMTP_PORT", str(default))
+    
+    # Check if it's a valid numeric string
+    if port_str.strip().isdigit():
+        port = int(port_str.strip())
+        # Validate port range (1-65535)
+        if 1 <= port <= 65535:
+            return port
+        else:
+            logger.warning(
+                f"SMTP_PORT '{port}' is out of valid range (1-65535). "
+                f"Using default port {default}."
+            )
+            return default
+    else:
+        logger.warning(
+            f"SMTP_PORT '{port_str}' is not a valid integer. "
+            f"Using default port {default}."
+        )
+        return default
+
+
 # Email Configuration - Set in .env file
 EMAIL_CONFIG = {
     "smtp_server": os.getenv("SMTP_SERVER", "smtp.gmail.com"),
-    "smtp_port": int(os.getenv("SMTP_PORT", "587")),
+    "smtp_port": _parse_smtp_port(587),
     "sender_email": os.getenv("SENDER_EMAIL", ""),
     "sender_password": os.getenv("SENDER_PASSWORD", ""),  # App password for Gmail
     "recipient_emails": os.getenv("RECIPIENT_EMAILS", "").split(","),  # Comma-separated
