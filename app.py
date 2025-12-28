@@ -11,8 +11,9 @@ from gem_scraper import scrape_bids, download_document, extract_text_from_pdf, e
 from ai_analyzer import analyze_bid_complete
 from database import CIPDatabase
 from agent_scheduler import CIPAgent
-from config import FIRM_PROFILE, NOTIFICATION_CONFIG
+from config import FIRM_PROFILE, NOTIFICATION_CONFIG, CONSULTING_TAXONOMY, KEYWORD_EXPANSIONS, SCRAPING_CONFIG
 from virtual_agent import BidReaderAgent
+from auth import AuthManager, init_session, is_logged_in, is_admin, get_current_user, login_user, logout_user
 
 # Page config
 st.set_page_config(
@@ -22,21 +23,24 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Modern UI Styling - Premium Dark Theme with Glassmorphism
+# Modern UI Styling - Professional Yellow & Dark Theme
 st.markdown("""
 <style>
     /* Import Google Fonts */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     
-    /* Root Variables */
+    /* Root Variables - EY Color Palette */
     :root {
-        --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        --gradient-success: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
-        --gradient-warning: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-        --gradient-info: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-        --glass-bg: rgba(255, 255, 255, 0.05);
-        --glass-border: rgba(255, 255, 255, 0.1);
-        --card-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        --primary-dark: #333333;
+        --primary-yellow: #ffe600;
+        --primary-white: #ffffff;
+        --border-gray: #cccccc;
+        --text-secondary: #999999;
+        --gradient-primary: linear-gradient(135deg, #ffe600 0%, #ffcc00 100%);
+        --gradient-dark: linear-gradient(135deg, #333333 0%, #1a1a1a 100%);
+        --glass-bg: rgba(255, 255, 255, 0.95);
+        --glass-border: #cccccc;
+        --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
     }
     
     /* Global Styles */
@@ -48,12 +52,13 @@ st.markdown("""
     .main .block-container {
         padding: 2rem 3rem;
         max-width: 1400px;
+        background: var(--primary-white);
     }
     
     /* Sidebar Styling */
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
-        border-right: 1px solid rgba(255, 255, 255, 0.1);
+        background: var(--gradient-dark);
+        border-right: 1px solid var(--border-gray);
     }
     
     [data-testid="stSidebar"] .stRadio > label {
@@ -65,90 +70,90 @@ st.markdown("""
         color: rgba(255, 255, 255, 0.85);
     }
     
-    /* Headers with Gradient */
+    /* Headers with Yellow Accent */
     h1 {
-        background: var(--gradient-primary);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
+        color: var(--primary-dark) !important;
         font-weight: 700 !important;
         letter-spacing: -0.5px;
+        border-left: 4px solid var(--primary-yellow);
+        padding-left: 15px;
     }
     
     h2 {
-        color: #e0e0e0 !important;
+        color: var(--primary-dark) !important;
         font-weight: 600 !important;
-        border-bottom: 2px solid rgba(102, 126, 234, 0.5);
+        border-bottom: 3px solid var(--primary-yellow);
         padding-bottom: 0.5rem;
     }
     
     h3 {
-        color: #b8b8b8 !important;
+        color: var(--primary-dark) !important;
         font-weight: 500 !important;
     }
     
     /* Card Styling */
     [data-testid="stExpander"] {
-        background: var(--glass-bg);
-        border: 1px solid var(--glass-border);
-        border-radius: 16px;
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
+        background: var(--primary-white);
+        border: 1px solid var(--border-gray);
+        border-radius: 12px;
         box-shadow: var(--card-shadow);
         transition: all 0.3s ease;
     }
     
     [data-testid="stExpander"]:hover {
         transform: translateY(-2px);
-        box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.45);
-        border-color: rgba(102, 126, 234, 0.4);
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+        border-left: 4px solid var(--primary-yellow);
     }
     
     /* Button Styling */
     .stButton > button {
-        background: var(--gradient-primary) !important;
+        background: var(--gradient-dark) !important;
+        color: var(--primary-white) !important;
         border: none !important;
-        border-radius: 12px !important;
+        border-radius: 8px !important;
         font-weight: 600 !important;
         letter-spacing: 0.3px;
         padding: 0.6rem 1.5rem !important;
         transition: all 0.3s ease !important;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        box-shadow: 0 2px 10px rgba(51, 51, 51, 0.3);
     }
     
     .stButton > button:hover {
+        background: var(--primary-dark) !important;
         transform: translateY(-2px) !important;
-        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6) !important;
+        box-shadow: 0 4px 15px rgba(51, 51, 51, 0.4) !important;
     }
     
-    /* Primary Button */
+    /* Primary Button - Yellow */
     .stButton > button[kind="primary"] {
-        background: var(--gradient-success) !important;
-        box-shadow: 0 4px 15px rgba(17, 153, 142, 0.4);
+        background: var(--gradient-primary) !important;
+        color: var(--primary-dark) !important;
+        box-shadow: 0 2px 10px rgba(255, 230, 0, 0.4);
+    }
+    
+    .stButton > button[kind="primary"]:hover {
+        box-shadow: 0 4px 20px rgba(255, 230, 0, 0.6) !important;
     }
     
     /* Metrics Styling */
     [data-testid="stMetric"] {
-        background: var(--glass-bg);
-        border: 1px solid var(--glass-border);
-        border-radius: 16px;
+        background: var(--primary-white);
+        border: 1px solid var(--border-gray);
+        border-left: 4px solid var(--primary-yellow);
+        border-radius: 12px;
         padding: 1.2rem !important;
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
     }
     
     [data-testid="stMetricLabel"] {
-        color: rgba(255, 255, 255, 0.7) !important;
+        color: var(--text-secondary) !important;
         font-size: 0.85rem !important;
         text-transform: uppercase;
         letter-spacing: 1px;
     }
     
     [data-testid="stMetricValue"] {
-        background: var(--gradient-primary);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
+        color: var(--primary-dark) !important;
         font-size: 2rem !important;
         font-weight: 700 !important;
     }
@@ -157,15 +162,15 @@ st.markdown("""
     .stTextInput > div > div > input,
     .stSelectbox > div > div > div,
     .stMultiSelect > div > div > div {
-        background: rgba(255, 255, 255, 0.05) !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        border-radius: 12px !important;
-        color: white !important;
+        background: var(--primary-white) !important;
+        border: 1px solid var(--border-gray) !important;
+        border-radius: 8px !important;
+        color: var(--primary-dark) !important;
     }
     
     .stTextInput > div > div > input:focus {
-        border-color: #667eea !important;
-        box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.3) !important;
+        border-color: var(--primary-yellow) !important;
+        box-shadow: 0 0 0 2px rgba(255, 230, 0, 0.3) !important;
     }
     
     /* Tabs Styling */
@@ -175,55 +180,68 @@ st.markdown("""
     }
     
     .stTabs [data-baseweb="tab"] {
-        background: var(--glass-bg);
-        border: 1px solid var(--glass-border);
-        border-radius: 12px;
+        background: var(--primary-white);
+        border: 1px solid var(--border-gray);
+        border-radius: 8px;
         padding: 0.8rem 1.5rem;
         transition: all 0.3s ease;
+        color: var(--primary-dark);
     }
     
     .stTabs [aria-selected="true"] {
-        background: var(--gradient-primary) !important;
-        border: none !important;
+        background: var(--primary-yellow) !important;
+        border: 1px solid var(--primary-yellow) !important;
+        color: var(--primary-dark) !important;
+        font-weight: 600;
     }
     
     /* Success/Info/Warning/Error Messages */
     .stSuccess {
-        background: linear-gradient(135deg, rgba(17, 153, 142, 0.2) 0%, rgba(56, 239, 125, 0.2) 100%) !important;
-        border: 1px solid rgba(56, 239, 125, 0.3) !important;
-        border-radius: 12px !important;
+        background: rgba(40, 167, 69, 0.1) !important;
+        border-left: 4px solid #28a745 !important;
+        border-radius: 8px !important;
+        color: var(--primary-dark) !important;
     }
     
     .stInfo {
-        background: linear-gradient(135deg, rgba(79, 172, 254, 0.2) 0%, rgba(0, 242, 254, 0.2) 100%) !important;
-        border: 1px solid rgba(79, 172, 254, 0.3) !important;
-        border-radius: 12px !important;
+        background: rgba(255, 230, 0, 0.1) !important;
+        border-left: 4px solid var(--primary-yellow) !important;
+        border-radius: 8px !important;
+        color: var(--primary-dark) !important;
     }
     
     .stWarning {
-        background: linear-gradient(135deg, rgba(240, 147, 251, 0.2) 0%, rgba(245, 87, 108, 0.2) 100%) !important;
-        border: 1px solid rgba(245, 87, 108, 0.3) !important;
-        border-radius: 12px !important;
+        background: rgba(255, 193, 7, 0.1) !important;
+        border-left: 4px solid #ffc107 !important;
+        border-radius: 8px !important;
+        color: var(--primary-dark) !important;
+    }
+    
+    .stError {
+        background: rgba(220, 53, 69, 0.1) !important;
+        border-left: 4px solid #dc3545 !important;
+        border-radius: 8px !important;
+        color: var(--primary-dark) !important;
     }
     
     /* Dataframe Styling */
     [data-testid="stDataFrame"] {
-        border-radius: 16px;
+        border-radius: 12px;
         overflow: hidden;
-        border: 1px solid var(--glass-border);
+        border: 1px solid var(--border-gray);
     }
     
     /* Progress Bar */
     .stProgress > div > div > div > div {
-        background: var(--gradient-primary) !important;
+        background: var(--primary-yellow) !important;
         border-radius: 10px;
     }
     
     /* Divider */
     hr {
         border: none;
-        height: 1px;
-        background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.5), transparent);
+        height: 2px;
+        background: linear-gradient(90deg, transparent, var(--primary-yellow), transparent);
         margin: 1.5rem 0;
     }
     
@@ -232,64 +250,63 @@ st.markdown("""
         display: inline-flex;
         align-items: center;
         padding: 0.4rem 1rem;
-        border-radius: 20px;
+        border-radius: 6px;
         font-weight: 600;
         font-size: 0.9rem;
     }
     
     .score-high {
-        background: linear-gradient(135deg, rgba(17, 153, 142, 0.3), rgba(56, 239, 125, 0.3));
-        color: #38ef7d;
-        border: 1px solid rgba(56, 239, 125, 0.4);
+        background: rgba(40, 167, 69, 0.15);
+        color: #28a745;
+        border: 1px solid rgba(40, 167, 69, 0.3);
     }
     
     .score-medium {
-        background: linear-gradient(135deg, rgba(255, 193, 7, 0.3), rgba(255, 152, 0, 0.3));
-        color: #ffc107;
-        border: 1px solid rgba(255, 193, 7, 0.4);
+        background: rgba(255, 193, 7, 0.15);
+        color: #d39e00;
+        border: 1px solid rgba(255, 193, 7, 0.3);
     }
     
     .score-low {
-        background: linear-gradient(135deg, rgba(244, 67, 54, 0.3), rgba(211, 47, 47, 0.3));
-        color: #f44336;
-        border: 1px solid rgba(244, 67, 54, 0.4);
+        background: rgba(220, 53, 69, 0.15);
+        color: #dc3545;
+        border: 1px solid rgba(220, 53, 69, 0.3);
     }
     
     /* Recommendation Badges */
     .rec-pursue {
-        background: var(--gradient-success);
+        background: #28a745;
         color: white;
         padding: 0.3rem 0.8rem;
-        border-radius: 8px;
+        border-radius: 4px;
         font-weight: 600;
         display: inline-block;
     }
     
     .rec-evaluate {
-        background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-        color: white;
+        background: var(--primary-yellow);
+        color: var(--primary-dark);
         padding: 0.3rem 0.8rem;
-        border-radius: 8px;
+        border-radius: 4px;
         font-weight: 600;
         display: inline-block;
     }
     
     .rec-pass {
-        background: linear-gradient(135deg, #636363 0%, #434343 100%);
+        background: var(--text-secondary);
         color: white;
         padding: 0.3rem 0.8rem;
-        border-radius: 8px;
+        border-radius: 4px;
         font-weight: 600;
         display: inline-block;
     }
     
     /* Popover Styling */
     [data-testid="stPopover"] {
-        background: rgba(26, 26, 46, 0.95) !important;
-        border: 1px solid var(--glass-border) !important;
-        border-radius: 16px !important;
-        backdrop-filter: blur(20px);
-        -webkit-backdrop-filter: blur(20px);
+        background: var(--primary-white) !important;
+        border: 1px solid var(--border-gray) !important;
+        border-radius: 12px !important;
+        box-shadow: var(--card-shadow);
     }
     
     /* Radio Buttons Styling */
@@ -298,17 +315,24 @@ st.markdown("""
     }
     
     [data-testid="stRadio"] label {
-        background: var(--glass-bg);
-        border: 1px solid var(--glass-border);
-        border-radius: 12px;
+        background: var(--primary-white) !important;
+        border: 1px solid var(--border-gray) !important;
+        border-radius: 8px;
         padding: 0.8rem 1rem !important;
         transition: all 0.3s ease;
         cursor: pointer;
     }
     
+    /* Make sure text is visible in radio labels */
+    [data-testid="stRadio"] label span,
+    [data-testid="stRadio"] label p,
+    [data-testid="stRadio"] label div {
+        color: #333333 !important;
+    }
+    
     [data-testid="stRadio"] label:hover {
-        background: rgba(102, 126, 234, 0.15);
-        border-color: rgba(102, 126, 234, 0.4);
+        background: rgba(255, 230, 0, 0.2) !important;
+        border-color: var(--primary-yellow) !important;
     }
     
     /* Spinner */
@@ -446,117 +470,137 @@ def run_and_display_analysis(bid, key_suffix):
     if st.session_state.get(analysis_key):
         result = st.session_state[analysis_key]
         
-        with st.expander(f"📊 Analysis Results: {result['bid_num']}", expanded=True):
-            # Create full-width tabbed display
-            tab1, tab2, tab3 = st.tabs(["📋 SOW Summary", "🎯 AI Analysis", "📊 A&D Intelligence"])
+        with st.expander(f"📊 Full Intelligence Report: {result['bid_num']}", expanded=True):
+            # Create 2 tabs: SOW Summary and Combined Intelligence
+            tab1, tab2 = st.tabs(["📋 SOW Summary", "🎯 Combined Intelligence Report"])
             
             with tab1:
                 st.markdown("### Scope of Work Summary")
                 st.markdown(result['sow'])
             
             with tab2:
-                st.markdown("### AI Analysis Results")
+                st.markdown("### 🎯 Combined Intelligence Report")
                 
-                # CFS Score cards in columns
+                # Extract all data
                 cfs = result['cfs'].get('cfs', {})
                 score = cfs.get('score', 0)
                 verdict = cfs.get('verdict', 'N/A')
                 rec = result['cfs'].get('go_no_go', {}).get('overall_recommendation', 'N/A')
                 
-                col1, col2, col3 = st.columns(3)
+                ad = result.get('ad', {}) or {}
+                ad_score = ad.get('a_d_relevance_score', 0)
+                ad_rec = ad.get('recommendation', 'N/A')
+                ad_confidence = ad.get('confidence', 0)
+                ad_category = ad.get('a_d_sub_category', 'N/A')
+                
+                # Combined Score Cards - 5 metrics in one row
+                st.markdown("#### 📊 Key Metrics")
+                col1, col2, col3, col4, col5 = st.columns(5)
+                
                 with col1:
                     score_color = "#11998e" if score >= 70 else "#f5a623" if score >= 50 else "#e74c3c"
                     st.markdown(f"""
-                    <div style='text-align: center; padding: 20px; 
+                    <div style='text-align: center; padding: 15px; 
                          background: linear-gradient(135deg, {score_color}dd, {score_color}aa); 
-                         color: white; border-radius: 16px; margin: 5px;'>
-                        <div style='font-size: 2.5rem; font-weight: bold;'>{score}</div>
-                        <div style='font-size: 0.95rem; opacity: 0.9;'>CFS Score</div>
+                         color: white; border-radius: 12px;'>
+                        <div style='font-size: 2rem; font-weight: bold;'>{score}</div>
+                        <div style='font-size: 0.8rem; opacity: 0.9;'>CFS Score</div>
                     </div>
                     """, unsafe_allow_html=True)
+                
                 with col2:
                     rec_color = "#11998e" if rec == "GO" else "#e74c3c" if rec == "NO_GO" else "#f5a623"
                     st.markdown(f"""
-                    <div style='text-align: center; padding: 20px; 
+                    <div style='text-align: center; padding: 15px; 
                          background: linear-gradient(135deg, {rec_color}dd, {rec_color}aa); 
-                         color: white; border-radius: 16px; margin: 5px;'>
-                        <div style='font-size: 1.8rem; font-weight: bold;'>{rec}</div>
-                        <div style='font-size: 0.95rem; opacity: 0.9;'>Recommendation</div>
+                         color: white; border-radius: 12px;'>
+                        <div style='font-size: 1.5rem; font-weight: bold;'>{rec}</div>
+                        <div style='font-size: 0.8rem; opacity: 0.9;'>CFS Rec</div>
                     </div>
                     """, unsafe_allow_html=True)
+                
                 with col3:
+                    ad_score_color = "#11998e" if ad_score >= 70 else "#f5a623" if ad_score >= 50 else "#e74c3c"
                     st.markdown(f"""
-                    <div style='text-align: center; padding: 20px; 
+                    <div style='text-align: center; padding: 15px; 
+                         background: linear-gradient(135deg, {ad_score_color}dd, {ad_score_color}aa); 
+                         color: white; border-radius: 12px;'>
+                        <div style='font-size: 2rem; font-weight: bold;'>{ad_score:.0f}</div>
+                        <div style='font-size: 0.8rem; opacity: 0.9;'>A&D Score</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col4:
+                    ad_rec_color = "#11998e" if ad_rec == "PURSUE" else "#e74c3c" if ad_rec == "PASS" else "#f5a623"
+                    st.markdown(f"""
+                    <div style='text-align: center; padding: 15px; 
+                         background: linear-gradient(135deg, {ad_rec_color}dd, {ad_rec_color}aa); 
+                         color: white; border-radius: 12px;'>
+                        <div style='font-size: 1.5rem; font-weight: bold;'>{ad_rec}</div>
+                        <div style='font-size: 0.8rem; opacity: 0.9;'>A&D Action</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col5:
+                    st.markdown(f"""
+                    <div style='text-align: center; padding: 15px; 
                          background: linear-gradient(135deg, #667eeadd, #764ba2aa); 
-                         color: white; border-radius: 16px; margin: 5px;'>
-                        <div style='font-size: 1.4rem; font-weight: bold;'>{verdict}</div>
-                        <div style='font-size: 0.95rem; opacity: 0.9;'>Verdict</div>
+                         color: white; border-radius: 12px;'>
+                        <div style='font-size: 1.1rem; font-weight: bold;'>{verdict}</div>
+                        <div style='font-size: 0.8rem; opacity: 0.9;'>Verdict</div>
                     </div>
                     """, unsafe_allow_html=True)
                 
                 st.markdown("---")
                 
-                # Reasoning
-                if cfs.get('reasoning'):
-                    st.markdown("**💡 AI Reasoning:**")
-                    st.info(cfs['reasoning'])
+                # Combined Details in 2 columns
+                col_left, col_right = st.columns(2)
                 
-                # Executive Summary
-                exec_summary = result['cfs'].get('executive_summary', {})
-                if exec_summary and isinstance(exec_summary, dict):
-                    st.markdown("**📝 Executive Summary:**")
-                    if exec_summary.get('the_ask'):
-                        st.markdown(f"**The Ask:** {exec_summary['the_ask']}")
-                    if exec_summary.get('key_deliverables'):
-                        st.markdown("**Key Deliverables:**")
-                        for d in exec_summary['key_deliverables']:
-                            st.markdown(f"  • {d}")
-            
-            with tab3:
-                if result['has_ad'] and result['ad']:
-                    st.markdown("### A&D Intelligence Analysis")
+                with col_left:
+                    st.markdown("#### 💡 CFS Analysis")
                     
-                    ad = result['ad']
-                    ad_score = ad.get('a_d_relevance_score', 0)
-                    ad_rec = ad.get('recommendation', 'EVALUATE')
+                    # Reasoning
+                    if cfs.get('reasoning'):
+                        st.info(cfs['reasoning'])
                     
-                    # Score metrics
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("A&D Score", f"{ad_score:.0f}/100")
-                    with col2:
-                        st.metric("Confidence", f"{ad.get('confidence', 50):.0f}%")
-                    with col3:
-                        st.metric("Category", ad.get('a_d_sub_category', 'N/A'))
-                    with col4:
-                        rec_emoji = "🟢" if ad_rec == "PURSUE" else "🟡" if ad_rec == "EVALUATE" else "🔴"
-                        st.metric("Action", f"{rec_emoji} {ad_rec}")
+                    # Executive Summary
+                    exec_summary = result['cfs'].get('executive_summary', {})
+                    if exec_summary and isinstance(exec_summary, dict):
+                        if exec_summary.get('the_ask'):
+                            st.markdown(f"**🎯 The Ask:** {exec_summary['the_ask']}")
+                        if exec_summary.get('key_deliverables'):
+                            st.markdown("**📦 Key Deliverables:**")
+                            for d in exec_summary['key_deliverables'][:5]:
+                                st.markdown(f"  • {d}")
+                
+                with col_right:
+                    st.markdown("#### 📊 A&D Intelligence")
                     
-                    st.markdown("---")
-                    
-                    # Risk Assessment
-                    risk = ad.get('risk_assessment', {})
-                    if risk:
-                        st.markdown("**⚠️ Risk Assessment:**")
-                        cols = st.columns(4)
-                        risk_items = [
-                            ("Implementation", risk.get('implementation_risk', 'N/A')),
-                            ("Scope Creep", risk.get('scope_creep_risk', 'N/A')),
-                            ("Political", risk.get('political_risk', 'N/A')),
-                            ("Win Prob.", risk.get('win_probability', 'N/A'))
-                        ]
-                        for col, (label, value) in zip(cols, risk_items):
-                            with col:
+                    if result.get('has_ad') and ad:
+                        # Category and Confidence
+                        st.markdown(f"**🏷️ Category:** {ad_category}")
+                        st.markdown(f"**🎯 Confidence:** {ad_confidence:.0f}%")
+                        
+                        # Risk Assessment
+                        risk = ad.get('risk_assessment', {})
+                        if risk:
+                            st.markdown("**⚠️ Risk Assessment:**")
+                            risk_items = [
+                                ("Implementation", risk.get('implementation_risk', 'N/A')),
+                                ("Scope Creep", risk.get('scope_creep_risk', 'N/A')),
+                                ("Political", risk.get('political_risk', 'N/A')),
+                                ("Win Prob.", risk.get('win_probability', 'N/A'))
+                            ]
+                            for label, value in risk_items:
                                 color = "#11998e" if value == "Low" else "#f5a623" if value == "Medium" else "#e74c3c"
-                                st.markdown(f"**{label}:** <span style='color: {color}'>{value}</span>", unsafe_allow_html=True)
-                    
-                    # Matched Keywords
-                    keywords = ad.get('matched_keywords', [])
-                    if keywords:
-                        st.markdown("**🏷️ Matched Keywords:**")
-                        st.write(", ".join(str(k) for k in keywords[:15]))
-                else:
-                    st.info("A&D Intelligence analysis not available.")
+                                st.markdown(f"  • **{label}:** <span style='color: {color}'>{value}</span>", unsafe_allow_html=True)
+                        
+                        # Matched Keywords
+                        keywords = ad.get('matched_keywords', [])
+                        if keywords:
+                            st.markdown(f"**🏷️ Keywords:** {', '.join(str(k) for k in keywords[:10])}")
+                    else:
+                        st.info("A&D Intelligence not available for this bid.")
             
             # Close button
             if st.button("❌ Close Analysis", key=f"close_analysis_{result['bid_num']}_{key_suffix}"):
@@ -657,16 +701,206 @@ def display_links_button(bid, key_suffix):
                             else:
                                 st.info("No links found in document")
 
+# Initialize authentication
+init_session()
+
 # Initialize database
 if 'db' not in st.session_state:
     st.session_state.db = CIPDatabase()
 elif not hasattr(st.session_state.db, 'get_recent_bids_with_analysis'):
-    # Force reload if method is missing (stale object)
     st.session_state.db = CIPDatabase()
 
 # Initialize agent
 if 'agent' not in st.session_state:
     st.session_state.agent = CIPAgent()
+
+# ============== LOGIN/REGISTER PAGE ==============
+if not is_logged_in():
+    # Capture any deep link params BEFORE login (will use after successful login)
+    query_params = st.query_params
+    if 'bidId' in query_params:
+        st.session_state['pending_bid_id'] = query_params.get('bidId')
+    
+    # Center the login card
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.markdown("""
+        <div style='text-align: center; padding: 20px 0;'>
+            <h1 style='color: #1a1a2e; margin-bottom: 5px;'>🎯 CIP</h1>
+            <p style='color: #666; font-size: 14px;'>Consulting Intelligence Platform</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Check if Google OAuth is properly configured (not placeholder values)
+        google_configured = False
+        if os.path.exists("google_credentials.json"):
+            try:
+                import json
+                with open("google_credentials.json", "r") as f:
+                    creds = json.load(f)
+                    client_id = creds.get("web", {}).get("client_id", "")
+                    # Only use OAuth if real credentials are set (not placeholders)
+                    if client_id and "YOUR_GOOGLE_CLIENT_ID" not in client_id:
+                        google_configured = True
+            except:
+                google_configured = False
+        
+        if google_configured:
+            try:
+                # Try to use real Google OAuth
+                from streamlit_google_auth import Authenticate
+                
+                authenticator = Authenticate(
+                    secret_credentials_path='google_credentials.json',
+                    cookie_name='cip_auth',
+                    cookie_key='cip_secret_key_12345',
+                    redirect_uri='http://localhost:8518',
+                )
+                
+                # Check if already authenticated via Google
+                authenticator.check_authentification()
+                
+                if st.session_state.get('connected'):
+                    # User is authenticated via Google
+                    google_info = {
+                        "email": st.session_state.get('user_info', {}).get('email', ''),
+                        "name": st.session_state.get('user_info', {}).get('name', ''),
+                        "sub": st.session_state.get('user_info', {}).get('id', ''),
+                        "picture": st.session_state.get('user_info', {}).get('picture', '')
+                    }
+                    
+                    result = st.session_state.auth_manager.login_with_google(google_info)
+                    if result["success"]:
+                        login_user(result["user"])
+                        st.rerun()
+                else:
+                    # Show Google Sign-In button
+                    st.markdown("### Sign in to continue")
+                    
+                    # Google login button from library
+                    authenticator.login()
+                    
+            except Exception as e:
+                st.warning(f"Google OAuth error: {str(e)[:100]}")
+                google_configured = False
+        
+        if not google_configured:
+            st.markdown("### Sign in to continue")
+            
+            # Manual Google-style login for demo/testing
+            with st.container(border=True):
+                st.markdown("#### 🔵 Continue with Google")
+                st.caption("Enter your Google account details")
+                
+                demo_name = st.text_input("Name", placeholder="Manoj", key="google_name")
+                demo_email = st.text_input("Email", placeholder="manojgundeti1234@gmail.com", key="google_email")
+                
+                if demo_name and demo_email:
+                    # Show preview
+                    initial = demo_name[0].upper()
+                    st.markdown(f"""
+                    <div style='display: flex; align-items: center; gap: 12px; padding: 12px 16px; 
+                         background: #f8f9fa; border: 1px solid #dadce0; border-radius: 8px; margin: 10px 0;'>
+                        <div style='width: 40px; height: 40px; border-radius: 50%; 
+                             background: linear-gradient(135deg, #667eea, #764ba2);
+                             display: flex; align-items: center; justify-content: center;
+                             color: white; font-weight: bold; font-size: 16px;'>{initial}</div>
+                        <div style='flex: 1;'>
+                            <div style='font-size: 14px; font-weight: 500; color: #202124;'>Continue as {demo_name}</div>
+                            <div style='font-size: 12px; color: #5f6368;'>{demo_email} ▾</div>
+                        </div>
+                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="24">
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if st.button("🔵 Continue with Google", type="primary", use_container_width=True):
+                        google_info = {
+                            "email": demo_email,
+                            "name": demo_name,
+                            "sub": f"google_{demo_email.replace('@', '_').replace('.', '_')}",
+                            "picture": ""
+                        }
+                        result = st.session_state.auth_manager.login_with_google(google_info)
+                        if result["success"]:
+                            login_user(result["user"])
+                            st.success(f"Welcome, {result['user']['username']}!")
+                            st.rerun()
+                        else:
+                            st.error(result["error"])
+        
+        # OR Divider
+        st.markdown("""
+        <div style='display: flex; align-items: center; margin: 25px 0; color: #5f6368;'>
+            <div style='flex: 1; height: 1px; background: #dadce0;'></div>
+            <span style='padding: 0 16px; font-size: 14px;'>OR</span>
+            <div style='flex: 1; height: 1px; background: #dadce0;'></div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Email Login Toggle
+        if 'show_email_login' not in st.session_state:
+            st.session_state.show_email_login = False
+        
+        if st.button("📧 Login with Email", use_container_width=True):
+            st.session_state.show_email_login = not st.session_state.show_email_login
+        
+        if st.session_state.show_email_login:
+            with st.container(border=True):
+                login_username = st.text_input("Username or Email", key="login_user")
+                login_password = st.text_input("Password", type="password", key="login_pass")
+                
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    if st.button("🔓 Login", type="primary", use_container_width=True):
+                        if login_username and login_password:
+                            result = st.session_state.auth_manager.login(login_username, login_password)
+                            if result["success"]:
+                                login_user(result["user"])
+                                st.rerun()
+                            else:
+                                st.error(result["error"])
+                
+                with col_b:
+                    if st.button("📝 Register", use_container_width=True):
+                        st.session_state.show_register = not st.session_state.get('show_register', False)
+                
+                if st.session_state.get('show_register'):
+                    st.divider()
+                    reg_username = st.text_input("Username", key="reg_user")
+                    reg_email = st.text_input("Email", key="reg_email")
+                    reg_password = st.text_input("Password", type="password", key="reg_pass")
+                    reg_confirm = st.text_input("Confirm Password", type="password", key="reg_confirm")
+                    
+                    if st.button("Create Account", type="primary", use_container_width=True):
+                        if reg_password != reg_confirm:
+                            st.error("Passwords don't match")
+                        else:
+                            result = st.session_state.auth_manager.register_user(reg_username, reg_email, reg_password)
+                            if result["success"]:
+                                st.success("Account created! Please login.")
+                            else:
+                                st.error(result["error"])
+        
+        # Setup instructions
+        with st.expander("🔧 Setup Real Google OAuth"):
+            st.markdown("""
+            To enable one-click Google Sign-In:
+            
+            1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+            2. Create a new project or select existing
+            3. Enable **Google+ API** and **OAuth consent screen**
+            4. Create **OAuth 2.0 credentials** (Web application)
+            5. Add `http://localhost:8516` to authorized redirect URIs
+            6. Download the credentials JSON
+            7. Replace `google_credentials.json` content with your credentials
+            
+            Once configured, users can sign in with one click!
+            """)
+    
+    st.stop()
+
+# ============== MAIN APP (LOGGED IN) ==============
 
 # Initialize results if empty
 if 'current_results' not in st.session_state:
@@ -676,12 +910,25 @@ if 'current_results' not in st.session_state:
 with st.sidebar:
     st.title("🎯 CIP")
     st.markdown("**Consulting Intelligence Platform**")
+    
+    # User info
+    user = get_current_user()
+    if user:
+        st.caption(f"👤 {user['username']} {'(Admin)' if user['is_admin'] else ''}")
+        if st.button("🚪 Logout", use_container_width=True):
+            logout_user()
+            st.rerun()
+    
     st.divider()
     
-    # Navigation
+    # Navigation - Admin page visible only to admins
+    base_pages = ["🔎 Scraper", "⭐ Watchlist", "📊 Analytics"]
+    if is_admin():
+        base_pages.append("🔧 Admin")
+    
     page = st.radio(
         "Navigation",
-        ["🔍 Intelligence Dashboard", "📅 Daily Scrape", "⭐ Watchlist", "📊 Analytics", "⚙️ Settings"],
+        base_pages,
         label_visibility="collapsed"
     )
     
@@ -693,111 +940,256 @@ with st.sidebar:
         st.caption(f"Focus Areas: {len(FIRM_PROFILE['expertise_areas'])} domains")
         st.caption(f"Min CFS Score: {NOTIFICATION_CONFIG['min_cfs_score']}")
 
-# Page 1: Intelligence Dashboard
-if page == "🔍 Intelligence Dashboard":
-    st.title("🔍 Intelligence Dashboard")
-    st.caption("AI-powered consulting opportunity discovery")
+# Page 1: Scraper (Main feature with sub-tabs)
+if page == "🔎 Scraper":
+    st.title("🔎 Scraper")
+    st.caption("AI-powered bid discovery, scraping & search")
     
-    # Search Section
-    col1, col2 = st.columns([3, 1])
+    # Check for deep link from email (bidId query parameter OR pending from login)
+    query_params = st.query_params
+    bid_id_to_load = None
     
-    with col1:
-        st.subheader("Search & Filter")
+    # Priority 1: Check query params
+    if 'bidId' in query_params:
+        bid_id_to_load = query_params.get('bidId')
+        st.query_params.clear()  # Clear to avoid reload loop
     
-    with col2:
-        if st.button("▶️ Run Intelligence Now", type="primary", use_container_width=True):
-            with st.spinner("Running AI-powered analysis..."):
-                count = st.session_state.agent.run_now('daily_intelligence')
-                
-                # Fetch latest results
-                limit = count if count > 0 else 20
-                latest_bids = st.session_state.db.get_recent_bids_with_analysis(limit=limit)
-                st.session_state['current_results'] = latest_bids
-                
-                st.success(f"✅ Found {count} high-fit opportunities!")
-                st.rerun()
+    # Priority 2: Check pending bid from before login
+    elif 'pending_bid_id' in st.session_state:
+        bid_id_to_load = st.session_state.pop('pending_bid_id')
     
-    # Search filters
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        keywords = st.text_input(
-            "Keywords",
-            placeholder="e.g., Digital Transformation, ERP, Cloud",
-            help="Leave empty for broad search"
-        )
-    
-    with col2:
-        from_date = st.date_input(
-            "From Date",
-            value=datetime.now() - timedelta(days=30)
-        )
-    
-    with col3:
-        to_date = st.date_input(
-            "To Date",
-            value=datetime.now() + timedelta(days=90)
-        )
-    
-    # Advanced options
-    with st.expander("⚙️ Advanced Options"):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            max_pages = st.slider("Max Pages", 1, 20, 10)
-        with col2:
-            consulting_only = st.checkbox("Consulting Only", value=True)
-        with col3:
-            run_ai_analysis = st.checkbox("Run AI Analysis", value=True)
-    
-    # Search button
-    if st.button("🔎 Search Bids", type="secondary"):
-        with st.spinner("Scraping and analyzing..."):
-            # Scrape bids
-            bids = scrape_bids(
-                keywords=keywords,
-                from_date=from_date.strftime('%Y-%m-%d') if from_date else "",
-                to_date=to_date.strftime('%Y-%m-%d') if to_date else "",
-                max_pages=max_pages,
-                consulting_only=consulting_only
-            )
+    # Load the bid if we have an ID
+    if bid_id_to_load:
+        st.info(f"📧 Opening bid from email: **{bid_id_to_load}**")
+        
+        # Load this specific bid from database
+        try:
+            all_results = st.session_state.db.get_recent_bids_with_analysis(limit=200)
+            # Filter to find the matching bid
+            matching_bids = [r for r in all_results if r.get('Bid Number') == bid_id_to_load or r.get('bid_id') == bid_id_to_load]
             
-            if bids:
-                st.success(f"Found {len(bids)} bids!")
-                
-                # Save to database and run AI analysis
-                analyzed_bids = []
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                for i, bid in enumerate(bids):
-                    status_text.text(f"Analyzing {i+1}/{len(bids)}: {bid['Bid Number']}")
-                    
-                    # Save bid
-                    st.session_state.db.save_bid(bid)
-                    
-                    # Run AI analysis if enabled
-                    if run_ai_analysis:
-                        analysis = analyze_bid_complete(bid)
-                        st.session_state.db.save_ai_analysis(analysis)
-                        
-                        analyzed_bids.append({
-                            **bid,
-                            'CFS Score': analysis['cfs']['score'],
-                            'Verdict': analysis['cfs']['verdict'],
-                            'Recommendation': analysis['go_no_go']['overall_recommendation']
-                        })
-                    else:
-                        analyzed_bids.append(bid)
-                    
-                    progress_bar.progress((i + 1) / len(bids))
-                
-                status_text.text("✅ Analysis complete!")
-                st.session_state['current_results'] = analyzed_bids
+            if matching_bids:
+                st.session_state['current_results'] = matching_bids
+                st.session_state['deep_link_bid'] = bid_id_to_load
+                st.success(f"✅ Found bid {bid_id_to_load}")
             else:
-                st.warning("No bids found")
+                st.warning(f"⚠️ Bid {bid_id_to_load} not found in history. Loading all recent bids...")
+                st.session_state['current_results'] = all_results[:50]
+        except Exception as e:
+            st.error(f"Error loading bid: {str(e)}")
+    
+    # Sub-tabs for different scraper features
+    scraper_tab1, scraper_tab2, scraper_tab3 = st.tabs(["📅 Daily Scraper", "🔍 Intelligence Search", "📂 Search History"])
+    
+    # ============ TAB 1: Daily Scraper ============
+    with scraper_tab1:
+        st.markdown("### Daily Scraper (Last 24 Hours)")
+        st.caption("Scrape and analyze bids published in the last 24 hours")
+        
+        daily_scrape = st.button("▶️ Run Daily Scrape Now", type="primary", use_container_width=True)
+        
+        if daily_scrape:
+            with st.spinner("🔄 Scraping bids from last 24 hours..."):
+                try:
+                    from gem_scraper import GemScraper
+                    scraper = GemScraper()
+                    bids = scraper.scrape_bids(
+                        search_term="Consultancy Services",
+                        max_pages=5,
+                        filter_24h=True
+                    )
+                    
+                    if bids:
+                        st.success(f"✅ Found {len(bids)} bids in last 24 hours!")
+                        
+                        # Apply AI analysis
+                        if st.session_state.get('agent'):
+                            with st.spinner("🤖 Applying AI analysis..."):
+                                analyzed_results = []
+                                for bid in bids:
+                                    analysis = st.session_state.agent.analyze_bid(bid)
+                                    analyzed_results.append({**bid, **analysis})
+                                st.session_state['current_results'] = analyzed_results
+                        else:
+                            st.session_state['current_results'] = bids
+                    else:
+                        st.info("No new bids found in the last 24 hours")
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
+    
+    # ============ TAB 2: Intelligence Search ============
+    with scraper_tab2:
+        st.markdown("### Intelligence Search")
+        st.caption("Search GeM portal with custom filters and AI analysis")
+        
+        # Row 1: Keywords
+        keywords = st.text_input(
+            "🔑 Keywords",
+            placeholder="e.g., Digital Transformation, ERP, Cloud, Consultancy",
+            help="Enter keywords to search for specific opportunities",
+            key="intel_keywords"
+        )
+        
+        # Row 2: Organization/Ministry Filter + Date Range
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            organization_filter = st.text_input(
+                "🏛️ Organization / Ministry",
+                placeholder="e.g., Ministry of Defence, NIC, UIDAI",
+                help="Filter by organization or ministry name",
+                key="intel_org"
+            )
+        
+        with col2:
+            from_date = st.date_input(
+                "📅 From Date",
+                value=datetime.now() - timedelta(days=30),
+                key="intel_from"
+            )
+        
+        with col3:
+            to_date = st.date_input(
+                "📅 To Date",
+                value=datetime.now(),
+                key="intel_to"
+            )
+        
+        # Row 3: Advanced Options
+        with st.expander("⚙️ Advanced Options"):
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                max_pages = st.slider("Max Pages", 1, 20, 5, key="intel_pages")
+            with col2:
+                consulting_only = st.checkbox("Consulting Only", value=True, key="intel_consult")
+            with col3:
+                run_ai_analysis = st.checkbox("Run Full Analysis", value=True, help="SOW + CFS + A&D", key="intel_ai")
+            with col4:
+                use_cached = st.checkbox("Use Cached", value=True, key="intel_cache")
+        
+        # Search button
+        if st.button("🚀 Run Search", type="primary", use_container_width=True, key="intel_search_btn"):
+            with st.spinner("Searching GeM Portal..."):
+                from gem_scraper import scrape_bids, filter_new_bids
+                
+                bids = scrape_bids(
+                    keywords=keywords,
+                    from_date=from_date.strftime('%Y-%m-%d') if from_date else "",
+                    to_date=to_date.strftime('%Y-%m-%d') if to_date else "",
+                    max_pages=max_pages,
+                    consulting_only=consulting_only
+                )
+                
+                # Apply organization filter if provided
+                if organization_filter and bids:
+                    org_lower = organization_filter.lower()
+                    bids = [b for b in bids if org_lower in b.get('Department', '').lower()]
+                
+                if bids:
+                    st.info(f"📊 Found {len(bids)} matching bids")
+                    new_bids, existing_bids = filter_new_bids(bids, st.session_state.db)
+                    st.success(f"✨ {len(new_bids)} NEW | 📁 {len(existing_bids)} cached")
+                    
+                    analyzed_bids = []
+                    
+                    # Load cached
+                    if use_cached and existing_bids:
+                        for bid in existing_bids:
+                            cached = st.session_state.db.get_bid_with_analysis(bid['Bid Number'])
+                            if cached:
+                                analyzed_bids.append({**bid, 'CFS Score': cached.get('cfs_score', 0), 
+                                    'Verdict': cached.get('cfs_verdict', 'N/A'),
+                                    'Recommendation': cached.get('go_no_go_recommendation', 'N/A'), '_cached': True})
+                            else:
+                                new_bids.append(bid)
+                    
+                    # Analyze new
+                    if new_bids and run_ai_analysis:
+                        progress = st.progress(0)
+                        for i, bid in enumerate(new_bids):
+                            st.session_state.db.save_bid(bid)
+                            try:
+                                doc_path = download_document(bid.get('Document Link', ''), bid_data=bid)
+                                sow = ""
+                                if doc_path:
+                                    try:
+                                        sow = BidReaderAgent(doc_path).summarize_sow()
+                                    except: pass
+                                analysis = analyze_bid_complete(bid, pdf_path=doc_path, sow_text=sow)
+                                st.session_state.db.save_ai_analysis(analysis)
+                                analyzed_bids.append({**bid, 'CFS Score': analysis['cfs']['score'],
+                                    'Verdict': analysis['cfs']['verdict'],
+                                    'Recommendation': analysis['go_no_go']['overall_recommendation'], '_new': True})
+                            except Exception as e:
+                                analyzed_bids.append({**bid, 'CFS Score': 0, 'Verdict': 'Error', 'Recommendation': 'N/A'})
+                            progress.progress((i + 1) / len(new_bids))
+                        progress.empty()
+                    elif new_bids:
+                        for bid in new_bids:
+                            st.session_state.db.save_bid(bid)
+                            analyzed_bids.append(bid)
+                    
+                    analyzed_bids.sort(key=lambda x: x.get('CFS Score', 0), reverse=True)
+                    st.session_state['current_results'] = analyzed_bids
+                    st.success(f"✅ Complete! {len(analyzed_bids)} bids loaded")
+                else:
+                    st.warning("No bids found matching your criteria")
+    
+    # ============ TAB 3: Search History (DB Search) ============
+    with scraper_tab3:
+        st.markdown("### Search History")
+        st.caption("Search your database by Bid ID or keywords")
+        
+        # Search input
+        search_query = st.text_input(
+            "🔍 Search",
+            placeholder="Enter Bid ID (e.g., GEM/2024/B/...) or keywords",
+            help="Search in saved bids database by ID, title, ministry, or keywords",
+            key="history_search"
+        )
+        
+        # Date range filter
+        col1, col2, col3 = st.columns([2, 2, 1])
+        with col1:
+            history_from = st.date_input("From", value=datetime.now() - timedelta(days=90), key="hist_from")
+        with col2:
+            history_to = st.date_input("To", value=datetime.now(), key="hist_to")
+        with col3:
+            limit = st.selectbox("Limit", [50, 100, 200, 500], index=0, key="hist_limit")
+        
+        # Search button
+        col1, col2 = st.columns(2)
+        with col1:
+            search_db = st.button("🔍 Search Database", type="primary", use_container_width=True, key="search_db_btn")
+        with col2:
+            load_all = st.button("📂 Load All History", use_container_width=True, key="load_all_btn")
+        
+        if search_db or load_all:
+            with st.spinner("Searching database..."):
+                try:
+                    all_results = st.session_state.db.get_recent_bids_with_analysis(limit=limit)
+                    
+                    if search_query and not load_all:
+                        query_lower = search_query.lower()
+                        # Search by bid ID, title, ministry, department
+                        filtered = [r for r in all_results if 
+                            query_lower in r.get('Bid Number', '').lower() or
+                            query_lower in r.get('Items', '').lower() or
+                            query_lower in r.get('Department', '').lower() or
+                            query_lower in r.get('Organisation', '').lower() or
+                            query_lower in str(r.get('sow_summary', '')).lower()
+                        ]
+                        st.session_state['current_results'] = filtered
+                        st.success(f"✅ Found {len(filtered)} matching bids")
+                    else:
+                        st.session_state['current_results'] = all_results
+                        st.success(f"✅ Loaded {len(all_results)} bids from history")
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
     
     st.divider()
     
+
     # Results Section
     if 'current_results' in st.session_state and st.session_state['current_results']:
         st.subheader("📊 Results")
@@ -914,184 +1306,9 @@ if page == "🔍 Intelligence Dashboard":
                 mime="application/json"
             )
 
-# Page 1.5: Daily Scrape Results
-elif page == "📅 Daily Scrape":
-    st.title("📅 Daily Scrape Results")
-    st.caption("Automated intelligence gathered by the agent")
-    
-    st.title("📅 Daily Scrape Results")
-    st.caption("Automated intelligence gathered by the agent")
-    
-    # Run Now Button
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        view_mode = st.radio(
-            "View Mode", 
-            ["📁 Daily Digests (Files)", "🗄️ Historical Data (DB)"], 
-            horizontal=True,
-            label_visibility="collapsed"
-        )
-    with col2:
-        if st.button("▶️ Run Scrape Now", type="primary", use_container_width=True):
-            with st.spinner("Running agent... this may take a while"):
-                count = st.session_state.agent.run_now('daily_intelligence')
-                st.success(f"Run complete! Found {count} high-fit opportunities.")
-                time.sleep(2)
-                st.rerun()
-    
-    st.divider()
-    
-    if view_mode == "📁 Daily Digests (Files)":
-        digest_dir = NOTIFICATION_CONFIG['digest_path']
-        if not os.path.exists(digest_dir):
-            st.info("No daily digests found. The agent hasn't run yet.")
-        else:
-            # Get list of digests
-            digests = [f for f in os.listdir(digest_dir) if f.endswith('.json')]
-            if not digests:
-                st.info("No daily digests found.")
-            else:
-                digests.sort(reverse=True)
-                
-                # Date selector
-                selected_digest = st.selectbox(
-                    "Select Date",
-                    digests,
-                    format_func=lambda x: x.replace('digest_', '').replace('.json', '')
-                )
-                
-                # Load data
-                with open(os.path.join(digest_dir, selected_digest), 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                
-                # Summary stats
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Total Opportunities", data.get('total_opportunities', 0))
-                with col2:
-                    st.metric("Generated At", data.get('generated_at', 'N/A')[:16].replace('T', ' '))
-                with col3:
-                    st.metric("Firm Profile", data.get('firm_name', 'Unknown'))
-                
-                st.subheader("Opportunities")
-                
-                opportunities = data.get('opportunities', [])
-                if not opportunities:
-                    st.info("No opportunities found in this digest.")
-                else:
-                    for bid in opportunities:
-                        with st.container(border=True):
-                            col1, col2 = st.columns([4, 1])
-                            
-                            with col1:
-                                st.markdown(f"### {bid['bid_number']}")
-                                st.caption(f"📂 {bid['category']}")
-                                st.markdown(f"**Items:** {bid['items']}")
-                                st.markdown(f"**Department:** {bid['department']}")
-                            
-                            with col2:
-                                # CFS Score
-                                score = bid['cfs_score']
-                                color = "green" if score >= 80 else "orange" if score >= 50 else "red"
-                                st.markdown(f"<div style='text-align: center; padding: 10px; background-color: {color}; color: white; border-radius: 5px; font-weight: bold;'>CFS: {score}</div>", unsafe_allow_html=True)
-                            
-                            # Executive Summary
-                            if 'executive_summary' in bid:
-                                with st.expander("📄 Executive Summary", expanded=True):
-                                    summary = bid['executive_summary']
-                                    st.markdown(f"**The Ask:** {summary.get('the_ask', 'N/A')}")
-                                    st.markdown("**Key Deliverables:**")
-                                    for d in summary.get('key_deliverables', []):
-                                        st.markdown(f"- {d}")
-                            
-                            # Actions
-                            col1, col2, col3, col4, col5 = st.columns(5)
-                            with col1:
-                                 # Re-use existing DB logic for watchlist if needed
-                                 if st.button(f"⭐ Add to Watchlist", key=f"daily_watch_{bid['bid_number']}"):
-                                    st.session_state.db.add_to_watchlist(bid['bid_number'])
-                                    st.success("Added!")
-                            with col2:
-                                st.link_button("📄 View Document", bid.get('document_link', '#'))
-                            with col3:
-                                display_sow_button(bid, f"daily_{bid['bid_number']}")
-                            with col4:
-                                display_links_button(bid, f"daily_{bid['bid_number']}")
-                            with col5:
-                                updated_rec = bid.get('recommendation', 'N/A')
-                                st.caption(f"Rec: {updated_rec}")
 
-    else:  # Historical Data (DB)
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            period = st.selectbox(
-                "Time Period",
-                ["Last 7 Days", "Last 15 Days", "Last 1 Month", "Last 3 Months", "Last 6 Months", "Last 1 Year"]
-            )
-            
-            # Map selection to days
-            days_map = {
-                "Last 7 Days": 7,
-                "Last 15 Days": 15,
-                "Last 1 Month": 30,
-                "Last 3 Months": 90,
-                "Last 6 Months": 180,
-                "Last 1 Year": 365
-            }
-            days = days_map[period]
-            
-        with col2:
-            st.info(f"Showing automated analysis results from the last {days} days.")
-            
-        results = st.session_state.db.get_bids_in_period(days)
-        
-        if not results:
-            st.warning("No data found for this period.")
-        else:
-            st.success(f"Found {len(results)} bids.")
-            
-            for i, bid in enumerate(results):
-                with st.container(border=True):
-                    col1, col2 = st.columns([4, 1])
-                    
-                    with col1:
-                        st.markdown(f"### {bid['Bid Number']}")
-                        st.caption(f"📂 {bid.get('Category', 'Unknown')}")
-                        st.markdown(f"**Items:** {bid.get('Items', 'N/A')}")
-                        st.markdown(f"**Department:** {bid.get('Department', 'N/A')}")
-                    
-                    with col2:
-                        # CFS Score
-                        if 'CFS Score' in bid:
-                            score = bid['CFS Score']
-                            color = "green" if score >= 80 else "orange" if score >= 50 else "red"
-                            st.markdown(f"<div style='text-align: center; padding: 10px; background-color: {color}; color: white; border-radius: 5px; font-weight: bold;'>CFS: {score}</div>", unsafe_allow_html=True)
-                    
-                    # Executive Summary
-                    if 'executive_summary' in bid:
-                        with st.expander("📄 Executive Summary", expanded=False): # Default collapsed to save space
-                            summary = bid['executive_summary']
-                            st.markdown(f"**The Ask:** {summary.get('the_ask', 'N/A')}")
-                            st.markdown("**Key Deliverables:**")
-                            for d in summary.get('key_deliverables', []):
-                                st.markdown(f"- {d}")
-                    
-                    # Actions
-                    col1, col2, col3, col4, col5 = st.columns(5)
-                    with col1:
-                         if st.button(f"⭐ Add to Watchlist", key=f"hist_watch_{bid['Bid Number']}_{i}"):
-                            st.session_state.db.add_to_watchlist(bid['Bid Number'])
-                            st.success("Added!")
-                    with col2:
-                        st.link_button("📄 View Document", bid.get('Document Link', '#'))
-                    with col3:
-                        display_sow_button(bid, f"hist_{i}")
-                    with col4:
-                        display_links_button(bid, f"hist_{i}")
-                    with col5:
-                         if 'Recommendation' in bid:
-                            updated_rec = bid['Recommendation']
-                            st.caption(f"Rec: {updated_rec}")
+
+
 
 # Page 2: Watchlist
 elif page == "⭐ Watchlist":
@@ -1162,79 +1379,169 @@ elif page == "📊 Analytics":
             category_counts = pd.Series(categories).value_counts()
             st.bar_chart(category_counts)
 
-# Page 4: Settings
-elif page == "⚙️ Settings":
-    st.title("⚙️ Settings")
+# Page 4: Admin (Admin Only)
+elif page == "🔧 Admin":
+    st.title("🔧 Admin Dashboard")
+    st.caption("Manage platform settings, users, and configurations")
     
-    tab1, tab2, tab3 = st.tabs(["Firm Profile", "AI Configuration", "Scheduler"])
+    # Admin sub-navigation
+    admin_tab = st.radio(
+        "Admin Section",
+        ["📋 Firm Profile", "🔑 Keywords & Taxonomy", "⚙️ Scraping Settings", "👥 Users"],
+        horizontal=True
+    )
     
-    with tab1:
-        st.subheader("Firm Profile")
+    st.divider()
+    
+    if admin_tab == "📋 Firm Profile":
+        st.subheader("📋 Firm Profile Management")
         st.info("Configure your firm's expertise areas and preferences")
         
-        st.text_area(
-            "Expertise Areas",
-            value=", ".join(FIRM_PROFILE['expertise_areas']),
-            height=150,
-            disabled=True,
-            help="Edit config.py to modify"
-        )
+        # Display current settings
+        col1, col2 = st.columns(2)
         
-        st.number_input(
-            "Minimum Bid Value (INR)",
-            value=FIRM_PROFILE['turnover_threshold'],
-            disabled=True
-        )
+        with col1:
+            st.markdown("**Current Firm Name:**")
+            st.code(FIRM_PROFILE['name'])
+            
+            st.markdown("**Turnover Threshold:**")
+            st.code(f"₹{FIRM_PROFILE['turnover_threshold']:,}")
+        
+        with col2:
+            st.markdown("**Min CFS Score for Digest:**")
+            st.code(NOTIFICATION_CONFIG['min_cfs_score'])
+            
+            st.markdown("**Email Notifications:**")
+            st.code("Enabled" if NOTIFICATION_CONFIG.get('enable_email') else "Disabled")
+        
+        st.markdown("**Expertise Areas:**")
+        expertise_text = "\n".join([f"• {area}" for area in FIRM_PROFILE['expertise_areas']])
+        st.text_area("Current Expertise Areas", value=expertise_text, height=200, disabled=True)
+        
+        st.warning("⚠️ To edit these settings, modify `config.py` file directly.")
     
-    with tab2:
-        st.subheader("AI Configuration")
-        st.info("AI analysis is powered by Gemini 2.0 Flash")
+    elif admin_tab == "🔑 Keywords & Taxonomy":
+        st.subheader("🔑 Keywords & Taxonomy Management")
         
-        if os.getenv('GOOGLE_API_KEY'):
-            st.success("✅ API Key configured")
-        else:
-            st.error("❌ API Key not found")
+        # Consulting Taxonomy
+        st.markdown("### Consulting Taxonomy Categories")
+        for category, rules in CONSULTING_TAXONOMY.items():
+            with st.expander(f"📂 {category}"):
+                st.markdown("**Primary Keywords:**")
+                st.code(", ".join(rules.get('primary_keywords', [])))
+                
+                st.markdown("**Exclude Keywords:**")
+                st.code(", ".join(rules.get('exclude_keywords', [])))
+                
+                st.markdown("**Secondary Context:**")
+                st.code(", ".join(rules.get('secondary_context', [])))
         
-        st.number_input(
-            "Minimum CFS Score for Digest",
-            value=NOTIFICATION_CONFIG['min_cfs_score'],
-            disabled=True
-        )
+        st.divider()
+        
+        # Keyword Expansions
+        st.markdown("### Keyword Expansions")
+        for base_term, expansions in KEYWORD_EXPANSIONS.items():
+            with st.expander(f"🔤 {base_term}"):
+                st.write(", ".join(expansions))
+        
+        st.warning("⚠️ To edit keywords, modify `config.py` file directly.")
     
-    with tab3:
-        st.subheader("Agent Scheduler")
+    elif admin_tab == "⚙️ Scraping Settings":
+        st.subheader("⚙️ Scraping Configuration")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Max Pages", SCRAPING_CONFIG.get('max_pages', 10))
+            st.metric("Retry Attempts", SCRAPING_CONFIG.get('retry_attempts', 3))
+        
+        with col2:
+            st.metric("Rate Limit Min", f"{SCRAPING_CONFIG.get('rate_limit_min', 1)}s")
+            st.metric("Rate Limit Max", f"{SCRAPING_CONFIG.get('rate_limit_max', 3)}s")
+        
+        with col3:
+            st.metric("Retry Backoff", f"{SCRAPING_CONFIG.get('retry_backoff', 2)}x")
+        
+        st.divider()
+        
+        # Scheduler Status
+        st.markdown("### Agent Scheduler")
         
         col1, col2 = st.columns(2)
         
         with col1:
             if st.session_state.agent.is_running:
                 st.success("✅ Scheduler is running")
-                if st.button("⏸️ Stop Scheduler"):
+                if st.button("⏸️ Stop Scheduler", type="secondary"):
                     st.session_state.agent.stop_scheduler()
                     st.rerun()
             else:
                 st.info("⏸️ Scheduler is stopped")
-                if st.button("▶️ Start Scheduler"):
+                if st.button("▶️ Start Scheduler", type="primary"):
                     st.session_state.agent.start_scheduler()
                     st.rerun()
         
         with col2:
-            st.info(f"Daily Run: 08:00 AM\nWatchlist Check: Every 6 hours")
+            st.info("📅 Daily Run: 08:00 AM\n⏰ Watchlist Check: Every 6 hours")
         
         st.divider()
         
-        # View recent digests
-        st.subheader("Recent Digests")
-        digest_dir = NOTIFICATION_CONFIG['digest_path']
-        if os.path.exists(digest_dir):
-            digests = [f for f in os.listdir(digest_dir) if f.endswith('.json')]
-            if digests:
-                for digest in sorted(digests, reverse=True)[:5]:
-                    with st.expander(digest):
-                        with open(os.path.join(digest_dir, digest), 'r') as f:
-                            data = json.load(f)
-                            st.json(data)
-            else:
-                st.info("No digests yet")
+        # API Key Status
+        st.markdown("### API Configuration")
+        if os.getenv('GOOGLE_API_KEY'):
+            st.success("✅ Gemini API Key configured")
         else:
-            st.info("No digests yet")
+            st.error("❌ Gemini API Key not found")
+        
+        st.warning("⚠️ To edit scraping settings, modify `config.py` file directly.")
+    
+    elif admin_tab == "👥 Users":
+        st.subheader("👥 User Management")
+        st.info("Manage user accounts and admin access")
+        
+        # Get all users
+        users = st.session_state.auth_manager.get_all_users()
+        
+        st.markdown(f"**Total Users:** {len(users)}")
+        
+        for user in users:
+            with st.container(border=True):
+                col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
+                
+                with col1:
+                    admin_badge = "🛡️ Admin" if user['is_admin'] else "👤 User"
+                    status_badge = "✅" if user['is_active'] else "❌"
+                    st.markdown(f"**{user['username']}** {admin_badge}")
+                    st.caption(f"{user['email']}")
+                
+                with col2:
+                    st.caption(f"Created: {user['created_at'][:10] if user['created_at'] else 'N/A'}")
+                    st.caption(f"Last Login: {user['last_login'][:10] if user['last_login'] else 'Never'}")
+                
+                with col3:
+                    # Don't allow modifying own account or the main admin
+                    current_user = get_current_user()
+                    if user['id'] != current_user['id']:
+                        if user['is_admin']:
+                            if st.button("❌ Revoke Admin", key=f"revoke_{user['id']}"):
+                                st.session_state.auth_manager.set_admin_status(user['id'], False)
+                                st.success(f"Revoked admin from {user['username']}")
+                                st.rerun()
+                        else:
+                            if st.button("🛡️ Grant Admin", key=f"grant_{user['id']}"):
+                                st.session_state.auth_manager.set_admin_status(user['id'], True)
+                                st.success(f"Granted admin to {user['username']}")
+                                st.rerun()
+                    else:
+                        st.caption("(Your account)")
+                
+                with col4:
+                    if user['id'] != current_user['id']:
+                        if user['is_active']:
+                            if st.button("🚫 Deactivate", key=f"deact_{user['id']}"):
+                                st.session_state.auth_manager.toggle_user_active(user['id'])
+                                st.rerun()
+                        else:
+                            if st.button("✅ Activate", key=f"act_{user['id']}"):
+                                st.session_state.auth_manager.toggle_user_active(user['id'])
+                                st.rerun()

@@ -6,7 +6,7 @@ import time
 import os
 import random
 from datetime import datetime
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Set
 from config import (
     CONSULTING_TAXONOMY, KEYWORD_EXPANSIONS, SCRAPING_CONFIG,
     FIRM_PROFILE
@@ -16,6 +16,48 @@ from config import (
 BASE_URL = "https://bidplus.gem.gov.in"
 ALL_BIDS_URL = f"{BASE_URL}/all-bids"
 API_URL = f"{BASE_URL}/all-bids-data"
+
+
+def filter_new_bids(bids: List[Dict], db=None) -> Tuple[List[Dict], List[Dict]]:
+    """
+    Filters bids to separate new bids from already-seen bids.
+    
+    Args:
+        bids: List of scraped bids
+        db: Optional CIPDatabase instance for checking existing bids
+        
+    Returns:
+        Tuple of (new_bids, existing_bids)
+    """
+    if db is None:
+        try:
+            from database import CIPDatabase
+            db = CIPDatabase()
+        except ImportError:
+            # No database, return all as new
+            return (bids, [])
+    
+    existing_bid_numbers: Set[str] = set()
+    
+    # Get all existing bid numbers from database
+    try:
+        all_db_bids = db.get_recent_bids(days=365)  # Check last year
+        existing_bid_numbers = {b.get('bid_number') or b.get('Bid Number') for b in all_db_bids}
+    except Exception:
+        pass
+    
+    new_bids = []
+    existing_bids = []
+    
+    for bid in bids:
+        bid_num = bid.get('Bid Number', '')
+        if bid_num in existing_bid_numbers:
+            existing_bids.append(bid)
+        else:
+            new_bids.append(bid)
+    
+    return (new_bids, existing_bids)
+
 
 def get_csrf_token(session):
     # print("Fetching main page to get CSRF token...")
@@ -159,7 +201,7 @@ def scrape_bids(keywords="", from_date="", to_date="", max_pages=None, consultin
                         "from": from_date, # Format: YYYY-MM-DD
                         "to": to_date      # Format: YYYY-MM-DD
                     },
-                    "sort": "Bid-End-Date-Oldest"
+                    "sort": "Bid-Number-Newest"  # Sort by bid number for consistent results
                 }
             }
             
@@ -277,7 +319,14 @@ def scrape_bids(keywords="", from_date="", to_date="", max_pages=None, consultin
             
             page += 1
 
-    return list(all_bids_dict.values())
+    # Sort results by bid number (descending) for consistent order
+    sorted_bids = sorted(
+        all_bids_dict.values(),
+        key=lambda x: x.get('Bid Number', ''),
+        reverse=True
+    )
+    
+    return sorted_bids
 
 
 

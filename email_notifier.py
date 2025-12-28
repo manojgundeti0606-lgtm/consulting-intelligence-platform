@@ -204,8 +204,14 @@ def generate_full_bid_section_html(item: Dict, index: int) -> str:
     bid_num = bid.get('Bid Number', 'N/A')
     items = bid.get('Items', 'N/A')
     department = bid.get('Department', 'N/A')
+    organisation = bid.get('Organisation', department)  # Fallback to department
     end_date = bid.get('End Date', 'N/A')
+    emd = bid.get('EMD', bid.get('emd', 'N/A'))  # Get EMD value
     doc_link = bid.get('Document Link', '#')
+    
+    # Generate app link for Read More (opens in Load History with bid number)
+    app_base_url = os.getenv('APP_URL', 'http://localhost:8518')
+    read_more_link = f"{app_base_url}?page=history&bid={bid_num}"
     
     # CFS Analysis
     cfs = analysis.get('cfs', {})
@@ -289,8 +295,10 @@ def generate_full_bid_section_html(item: Dict, index: int) -> str:
             <div style="margin-bottom: 25px;">
                 <h3 style="color: #667eea; font-size: 16px; margin: 0 0 15px 0; border-bottom: 2px solid #667eea; padding-bottom: 8px;">📋 Bid Details</h3>
                 <table style="width: 100%; border-collapse: collapse;">
-                    <tr><td style="padding: 8px 0; color: #555; width: 130px;"><strong>Department:</strong></td><td style="color: #333;">{department}</td></tr>
-                    <tr><td style="padding: 8px 0; color: #555;"><strong>End Date:</strong></td><td style="color: #333;">{end_date}</td></tr>
+                    <tr><td style="padding: 8px 0; color: #555; width: 150px;"><strong>Ministry/Org:</strong></td><td style="color: #333;">{organisation}</td></tr>
+                    <tr><td style="padding: 8px 0; color: #555;"><strong>Department:</strong></td><td style="color: #333;">{department}</td></tr>
+                    <tr><td style="padding: 8px 0; color: #555;"><strong>End Date:</strong></td><td style="color: #e74c3c; font-weight: bold;">{end_date}</td></tr>
+                    <tr><td style="padding: 8px 0; color: #555;"><strong>EMD Amount:</strong></td><td style="color: #333; font-weight: bold;">₹ {emd}</td></tr>
                     <tr><td style="padding: 8px 0; color: #555;"><strong>Verdict:</strong></td><td style="color: #333;">{verdict}</td></tr>
                     <tr><td style="padding: 8px 0; color: #555;"><strong>A&D Category:</strong></td><td style="color: #333;">{ad_category}</td></tr>
                     <tr><td style="padding: 8px 0; color: #555;"><strong>Document:</strong></td><td><a href="{doc_link}" style="color: #667eea;">View Tender Document →</a></td></tr>
@@ -352,6 +360,13 @@ def generate_full_bid_section_html(item: Dict, index: int) -> str:
                     <div style="font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 5px;">Matched Keywords</div>
                     <div style="font-size: 13px; color: #333;">{keywords_html}</div>
                 </div>
+            </div>
+            
+            <!-- Read More Button -->
+            <div style="text-align: center; padding: 20px 0; border-top: 1px solid #e0e0e0; margin-top: 20px;">
+                <a href="{read_more_link}" style="display: inline-block; background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 14px 40px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 14px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">
+                    📖 Read More in App →
+                </a>
             </div>
         </div>
     </div>
@@ -485,6 +500,26 @@ def save_bid_report(bid: Dict, analysis: Dict, output_dir: str = "reports") -> s
     return filepath
 
 
+def get_all_user_emails() -> List[str]:
+    """
+    Get all active user emails from the database.
+    
+    Returns:
+        List of email addresses
+    """
+    try:
+        import sqlite3
+        conn = sqlite3.connect("cip_database.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT email FROM users WHERE is_active = 1")
+        emails = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        return emails
+    except Exception as e:
+        logger.warning(f"Could not get user emails from database: {e}")
+        return []
+
+
 def send_email_digest(
     bids_with_analysis: List[Dict],
     recipient_emails: Optional[List[str]] = None,
@@ -506,11 +541,23 @@ def send_email_digest(
         logger.error("Email not configured. Set SENDER_EMAIL and SENDER_PASSWORD in .env")
         return False
     
-    recipients = recipient_emails or EMAIL_CONFIG['recipient_emails']
+    # Get recipients: priority is provided list > database users > config defaults
+    if recipient_emails:
+        recipients = recipient_emails
+    else:
+        # Try to get all active user emails from database
+        db_emails = get_all_user_emails()
+        if db_emails:
+            recipients = db_emails
+            logger.info(f"Sending to {len(recipients)} users from database")
+        else:
+            # Fallback to config
+            recipients = EMAIL_CONFIG['recipient_emails']
+    
     recipients = [r.strip() for r in recipients if r.strip()]
     
     if not recipients:
-        logger.error("No recipient emails configured")
+        logger.error("No recipient emails found")
         return False
     
     # Default subject
@@ -568,6 +615,376 @@ def send_email_digest(
         return False
 
 
+def generate_daily_digest(
+    user: Dict,
+    bids: List[Dict],
+    app_base_url: str = "http://localhost:8518"
+) -> Dict[str, str]:
+    """
+    Generate a clean, professional daily digest email with boxed/card layout.
+    Uses table-based layout for email client compatibility.
+    
+    Args:
+        user: Dict with 'name', 'email', 'timezone' (e.g., 'Asia/Kolkata')
+        bids: List of bid objects with required fields
+        app_base_url: Base URL for deep links
+        
+    Returns:
+        Dict with 'email_subject', 'html_body', 'text_body'
+    """
+    from datetime import datetime
+    import pytz
+    
+    user_name = user.get('name', 'User')
+    user_tz_str = user.get('timezone', 'Asia/Kolkata')
+    
+    try:
+        user_tz = pytz.timezone(user_tz_str)
+    except:
+        user_tz = pytz.timezone('Asia/Kolkata')
+    
+    today = datetime.now(user_tz)
+    date_formatted = today.strftime('%d %b %Y')
+    
+    def format_datetime(iso_str: str) -> str:
+        """Convert ISO datetime to user timezone and format."""
+        if not iso_str or iso_str == 'N/A':
+            return 'Not specified'
+        try:
+            for fmt in ['%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d']:
+                try:
+                    dt = datetime.strptime(iso_str[:19], fmt)
+                    dt = pytz.UTC.localize(dt).astimezone(user_tz)
+                    return dt.strftime('%d %b %Y, %I:%M %p')
+                except:
+                    continue
+            return iso_str
+        except:
+            return iso_str
+    
+    def summarize_sow(sow: str) -> str:
+        """Create 35-55 word consulting-style summary."""
+        if not sow or sow.strip() == '':
+            return 'Not specified'
+        words = sow.strip().split()
+        if len(words) <= 55:
+            return ' '.join(words)
+        summary = ' '.join(words[:50])
+        if '.' in summary:
+            return summary[:summary.rfind('.')+1]
+        return summary + '...'
+    
+    # Sort by newest published/scraped first (descending)
+    def get_published_for_sort(bid):
+        published = bid.get('published_at') or bid.get('Start Date') or ''
+        try:
+            return datetime.strptime(published[:19], '%Y-%m-%d %H:%M:%S')
+        except:
+            try:
+                return datetime.strptime(published[:10], '%Y-%m-%d')
+            except:
+                return datetime.min
+    
+    sorted_bids = sorted(bids, key=get_published_for_sort, reverse=True)
+    bid_count = len(sorted_bids)
+    
+    # Generate subject
+    if bid_count > 0:
+        email_subject = f"Daily Bid Digest ({bid_count} new) — {date_formatted}"
+    else:
+        email_subject = f"Daily Bid Digest — No new bids in last 24 hours ({date_formatted})"
+    
+    # Find nearest deadline for executive note
+    nearest_deadline = 'N/A'
+    if sorted_bids:
+        deadlines = []
+        for bid in sorted_bids:
+            dl = bid.get('bid_deadline') or bid.get('End Date')
+            if dl:
+                deadlines.append((dl, bid))
+        if deadlines:
+            deadlines.sort(key=lambda x: x[0])
+            nearest_deadline = format_datetime(deadlines[0][0])
+    
+    # Build bid boxes HTML
+    bid_boxes_html = []
+    bid_paragraphs_text = []
+    
+    for i, bid in enumerate(sorted_bids, 1):
+        # Extract fields with fallbacks
+        bid_id = bid.get('bid_id') or bid.get('Bid Number', '')
+        title = bid.get('title') or bid.get('Items', 'Untitled Bid')
+        ministry = bid.get('ministry_or_organization') or bid.get('Organisation') or bid.get('Department', 'Not specified')
+        tender_id = bid.get('tender_id') or bid.get('Bid Number', 'Not specified')
+        portal = bid.get('portal', 'GeM')
+        published = format_datetime(bid.get('published_at') or bid.get('Start Date', ''))
+        deadline = format_datetime(bid.get('bid_deadline') or bid.get('End Date', ''))
+        emd = bid.get('emd_amount') or bid.get('EMD') or bid.get('emd', 'Not specified')
+        sow = bid.get('sow_summary') or bid.get('sow_consulting_summary', '')
+        sow_summary = summarize_sow(sow)
+        other_details = bid.get('any_other_details', '')
+        
+        # Deep link (Streamlit uses query params on root URL)
+        deep_link = f"{app_base_url}?bidId={bid_id}&utm_source=digest&utm_medium=email&utm_campaign=daily_digest"
+        
+        # Build other details string
+        other_details_str = f"Portal: {portal}; Published: {published}"
+        if other_details:
+            other_details_str += f"; {other_details}"
+        
+        # HTML box (table-based card) - EY Color Scheme
+        box_html = f'''<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #cccccc;border-radius:8px;margin:0 0 14px 0;">
+  <tr>
+    <td style="padding:12px 14px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;background:#333333;color:#ffffff;border-radius:8px 8px 0 0;">
+      <strong>{i}) Bid:</strong> {title}
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:12px 14px;background:#ffffff;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td width="33%" valign="top" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:18px;padding-right:10px;color:#333333;">
+            <strong>Bid no.:</strong> {tender_id}<br/>
+            <strong>EMD:</strong> {emd}
+          </td>
+          <td width="34%" valign="top" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:18px;padding-right:10px;color:#333333;">
+            <strong>Ministry/Organisation:</strong><br/>{ministry}
+          </td>
+          <td width="33%" valign="top" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:18px;color:#333333;">
+            <strong>Deadline:</strong><br/><span style="color:#dc3545;font-weight:bold;">{deadline}</span>
+          </td>
+        </tr>
+      </table>
+      <div style="height:10px;line-height:10px;">&nbsp;</div>
+      <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:18px;color:#999999;">
+        <strong style="color:#333333;">Other details:</strong> {other_details_str}
+      </div>
+      <div style="height:10px;line-height:10px;">&nbsp;</div>
+      <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:18px;color:#333333;">
+        <strong>SOW summary:</strong> {sow_summary}
+      </div>
+      <div style="height:12px;line-height:12px;">&nbsp;</div>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td bgcolor="#ffe600" style="border-radius:4px;">
+            <a href="{deep_link}" style="display:inline-block;padding:10px 18px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#333333;text-decoration:none;font-weight:bold;">
+              Read more →
+            </a>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>'''
+        bid_boxes_html.append(box_html)
+        
+        # Plain text paragraph
+        text_para = f"""{i}) Bid: {title}
+   Bid no.: {tender_id} | EMD: {emd}
+   Ministry/Organisation: {ministry}
+   Deadline: {deadline}
+   Other details: {other_details_str}
+   SOW summary: {sow_summary}
+   Read more: {deep_link}
+"""
+        bid_paragraphs_text.append(text_para)
+    
+    # Build HTML body
+    if bid_count > 0:
+        html_body = f'''<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family:Arial,Helvetica,sans-serif;margin:0;padding:20px;background:#f5f5f5;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:100%;background:#ffffff;border-radius:8px;">
+          <tr>
+            <td style="padding:25px;">
+              <p style="margin:0 0 20px 0;font-size:16px;color:#333;">Hello {user_name},</p>
+              
+              <p style="margin:0 0 20px 0;font-size:14px;color:#555;line-height:1.6;">
+                We found <strong>{bid_count} new bid(s)</strong> in the last 24 hours. 
+                The nearest deadline is <strong style="color:#e74c3c;">{nearest_deadline}</strong>. 
+                Open Load History in the app for full details and analysis.
+              </p>
+              
+              <div style="height:1px;background:#eee;margin:20px 0;"></div>
+              
+              {''.join(bid_boxes_html)}
+              
+              <div style="height:1px;background:#eee;margin:20px 0;"></div>
+              
+              <p style="margin:0;font-size:12px;color:#888;text-align:center;">
+                Consulting Intelligence Platform — Daily Digest<br/>
+                <a href="{app_base_url}" style="color:#1f6feb;">Open App</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>'''
+    else:
+        # No bids case
+        html_body = f'''<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family:Arial,Helvetica,sans-serif;margin:0;padding:20px;background:#f5f5f5;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:100%;background:#ffffff;border-radius:8px;">
+          <tr>
+            <td style="padding:25px;">
+              <p style="margin:0 0 20px 0;font-size:16px;color:#333;">Hello {user_name},</p>
+              
+              <p style="margin:0 0 15px 0;font-size:14px;color:#555;line-height:1.6;">
+                No new bids were scraped in the last 24 hours matching your current filters. 
+                This may happen during weekends or holidays.
+              </p>
+              
+              <p style="margin:0 0 20px 0;font-size:14px;color:#555;line-height:1.6;">
+                You can review your keywords, ministries, or filter settings in 
+                <a href="{app_base_url}/load-history" style="color:#1f6feb;font-weight:bold;">Load History</a> 
+                to adjust your preferences.
+              </p>
+              
+              <div style="height:1px;background:#eee;margin:20px 0;"></div>
+              
+              <p style="margin:0;font-size:12px;color:#888;text-align:center;">
+                Consulting Intelligence Platform — Daily Digest<br/>
+                <a href="{app_base_url}" style="color:#1f6feb;">Open App</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>'''
+    
+    # Build plain text body
+    if bid_count > 0:
+        text_body = f"""Hello {user_name},
+
+We found {bid_count} new bid(s) in the last 24 hours. The nearest deadline is {nearest_deadline}. Open Load History in the app for full details and analysis.
+
+{'=' * 60}
+
+{chr(10).join(bid_paragraphs_text)}
+{'=' * 60}
+
+Consulting Intelligence Platform — Daily Digest
+{app_base_url}
+"""
+    else:
+        text_body = f"""Hello {user_name},
+
+No new bids were scraped in the last 24 hours matching your current filters. This may happen during weekends or holidays.
+
+You can review your keywords, ministries, or filter settings in Load History to adjust your preferences: {app_base_url}/load-history
+
+{'=' * 60}
+
+Consulting Intelligence Platform — Daily Digest
+{app_base_url}
+"""
+    
+    return {
+        "email_subject": email_subject,
+        "html_body": html_body,
+        "text_body": text_body
+    }
+
+
+def send_daily_digest_to_all_users(bids: List[Dict], app_base_url: str = "http://localhost:8518") -> Dict:
+    """
+    Send daily digest email to all active users in the database.
+    
+    Args:
+        bids: List of bid objects from last 24 hours
+        app_base_url: Base URL for deep links
+        
+    Returns:
+        Dict with 'success', 'sent_count', 'failed_count', 'errors'
+    """
+    import sqlite3
+    
+    results = {
+        "success": True,
+        "sent_count": 0,
+        "failed_count": 0,
+        "errors": []
+    }
+    
+    # Check email configuration
+    if not EMAIL_CONFIG['sender_email'] or not EMAIL_CONFIG['sender_password']:
+        results["success"] = False
+        results["errors"].append("Email not configured")
+        return results
+    
+    # Get all active users from database
+    try:
+        conn = sqlite3.connect("cip_database.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT username, email FROM users WHERE is_active = 1")
+        users = [{"name": row[0], "email": row[1], "timezone": "Asia/Kolkata"} for row in cursor.fetchall()]
+        conn.close()
+    except Exception as e:
+        results["success"] = False
+        results["errors"].append(f"Database error: {str(e)}")
+        return results
+    
+    if not users:
+        results["errors"].append("No active users found")
+        return results
+    
+    logger.info(f"Sending daily digest to {len(users)} users with {len(bids)} bids")
+    
+    # Send to each user
+    for user in users:
+        try:
+            # Generate personalized email
+            email_content = generate_daily_digest(user, bids, app_base_url)
+            
+            # Create message with both HTML and plain text
+            msg = MIMEMultipart('alternative')
+            msg['From'] = EMAIL_CONFIG['sender_email']
+            msg['To'] = user['email']
+            msg['Subject'] = email_content['email_subject']
+            
+            # Attach plain text first, then HTML (email clients prefer last)
+            msg.attach(MIMEText(email_content['text_body'], 'plain'))
+            msg.attach(MIMEText(email_content['html_body'], 'html'))
+            
+            # Send
+            context = ssl.create_default_context()
+            with smtplib.SMTP(EMAIL_CONFIG['smtp_server'], EMAIL_CONFIG['smtp_port']) as server:
+                server.starttls(context=context)
+                server.login(EMAIL_CONFIG['sender_email'], EMAIL_CONFIG['sender_password'])
+                server.sendmail(EMAIL_CONFIG['sender_email'], user['email'], msg.as_string())
+            
+            logger.info(f"✅ Sent digest to {user['email']}")
+            results["sent_count"] += 1
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to send to {user['email']}: {str(e)}")
+            results["failed_count"] += 1
+            results["errors"].append(f"{user['email']}: {str(e)[:50]}")
+    
+    return results
+
+
 def test_email_connection() -> bool:
     """
     Test SMTP connection without sending an email.
@@ -611,3 +1028,4 @@ if __name__ == "__main__":
         print("  SENDER_PASSWORD=your-app-password")
         print("  RECIPIENT_EMAILS=recipient1@example.com,recipient2@example.com")
         print("  EMAIL_ENABLED=true")
+

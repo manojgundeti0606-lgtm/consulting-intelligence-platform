@@ -1,0 +1,34 @@
+Hello Manoj,
+
+We found 3 new bid(s) in the last 24 hours. The nearest deadline is 29 Dec 2024, 08:30 PM. Open Load History in the app for full details and analysis.
+
+============================================================
+
+1) Bid: Consulting Services for Digital Transformation Strategy
+   Bid no.: GEM/2024/B/5123456 | EMD: 1,00,000
+   Ministry/Organisation: Ministry of Electronics and IT
+   Deadline: 30 Dec 2024, 11:30 PM
+   Other details: Portal: GeM; Published: 27 Dec 2024, 03:30 PM
+   SOW summary: Development of comprehensive digital transformation roadmap including current state assessment, technology gap analysis, and implementation strategy for modernizing citizen services.
+   Read more: http://localhost:8518?bidId=GEM/2024/B/5123456&utm_source=digest&utm_medium=email&utm_campaign=daily_digest
+
+2) Bid: IT Infrastructure Audit and Security Assessment
+   Bid no.: GEM/2024/B/5123789 | EMD: 50,000
+   Ministry/Organisation: Ministry of Communications
+   Deadline: 29 Dec 2024, 08:30 PM
+   Other details: Portal: GeM; Published: 26 Dec 2024, 02:30 PM
+   SOW summary: Complete IT infrastructure audit covering network security, data protection compliance, vulnerability assessment, and recommendations for security improvements.
+   Read more: http://localhost:8518?bidId=GEM/2024/B/5123789&utm_source=digest&utm_medium=email&utm_campaign=daily_digest
+
+3) Bid: Project Management Consultancy for Smart City Initiative
+   Bid no.: GEM/2024/B/5124000 | EMD: 2,50,000
+   Ministry/Organisation: Ministry of Urban Development
+   Deadline: 05 Jan 2025, 10:30 PM
+   Other details: Portal: GeM; Published: Not specified
+   SOW summary: Not specified
+   Read more: http://localhost:8518?bidId=GEM/2024/B/5124000&utm_source=digest&utm_medium=email&utm_campaign=daily_digest
+
+============================================================
+
+Consulting Intelligence Platform — Daily Digest
+http://localhost:8518

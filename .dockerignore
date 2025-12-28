@@ -1,0 +1,46 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Environment files (contains secrets!)
+.env
+
+# Credentials (DO NOT COMMIT!)
+google_credentials.json
+client_secret_*.json
+*.pem
+*.key
+
+# Database (recreated on deploy)
+*.db
+
+# Downloaded documents
+documents/
+*.pdf
+
+# Digests
+digests/
+
+# Test outputs
+test_output/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
