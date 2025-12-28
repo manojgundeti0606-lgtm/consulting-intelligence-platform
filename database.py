@@ -41,10 +41,23 @@ class CIPDatabase:
                 end_date TEXT,
                 document_link TEXT,
                 category TEXT,
+                source_portal TEXT DEFAULT 'gem',
+                location TEXT,
                 first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        
+        # Migration: Add source_portal column if it doesn't exist
+        try:
+            cursor.execute("ALTER TABLE bids ADD COLUMN source_portal TEXT DEFAULT 'gem'")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+        
+        try:
+            cursor.execute("ALTER TABLE bids ADD COLUMN location TEXT")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
         
         # AI Analysis table
         cursor.execute('''

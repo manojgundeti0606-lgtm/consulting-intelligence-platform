@@ -1020,7 +1020,19 @@ if page == "🔎 Scraper":
     # ============ TAB 2: Intelligence Search ============
     with scraper_tab2:
         st.markdown("### Intelligence Search")
-        st.caption("Search GeM portal with custom filters and AI analysis")
+        st.caption("Search government procurement portals with custom filters and AI analysis")
+        
+        # Portal Selection
+        st.markdown("**Select Portals to Search:**")
+        portal_cols = st.columns(3)
+        with portal_cols[0]:
+            search_gem = st.checkbox("🛒 GeM", value=True, key="portal_gem")
+        with portal_cols[1]:
+            search_cppp = st.checkbox("📜 CPPP", value=True, key="portal_cppp", help="Central Public Procurement Portal")
+        with portal_cols[2]:
+            search_dppp = st.checkbox("🛡️ DPPP", value=True, key="portal_dppp", help="Defence Procurement Portal")
+        
+        st.divider()
         
         # Row 1: Keywords
         keywords = st.text_input(
@@ -1069,21 +1081,45 @@ if page == "🔎 Scraper":
         
         # Search button
         if st.button("🚀 Run Search", type="primary", use_container_width=True, key="intel_search_btn"):
-            with st.spinner("Searching GeM Portal..."):
-                from gem_scraper import scrape_bids, filter_new_bids
+            # Determine which portals to search
+            from portal_scrapers import UnifiedScraper, PortalType
+            
+            selected_portals = []
+            if search_gem:
+                selected_portals.append(PortalType.GEM)
+            if search_cppp:
+                selected_portals.append(PortalType.CPPP)
+            if search_dppp:
+                selected_portals.append(PortalType.DPPP)
+            
+            if not selected_portals:
+                st.warning("⚠️ Please select at least one portal to search")
+            else:
+                portal_names = ", ".join([p.value.upper() for p in selected_portals])
+                with st.spinner(f"Searching {portal_names}..."):
+                    try:
+                        unified_scraper = UnifiedScraper()
+                        scraped_bids = unified_scraper.scrape_portals(
+                            portals=selected_portals,
+                            keywords=keywords,
+                            from_date=from_date.strftime('%Y-%m-%d') if from_date else "",
+                            to_date=to_date.strftime('%Y-%m-%d') if to_date else "",
+                            max_pages=max_pages,
+                            consulting_only=consulting_only
+                        )
+                        
+                        # Convert ScrapedBid objects to dict format
+                        bids = [bid.to_dict() for bid in scraped_bids]
+                        
+                        # Apply organization filter if provided
+                        if organization_filter and bids:
+                            org_lower = organization_filter.lower()
+                            bids = [b for b in bids if org_lower in b.get('Department', '').lower()]
+                    except Exception as e:
+                        st.error(f"Error searching portals: {str(e)}")
+                        bids = []
                 
-                bids = scrape_bids(
-                    keywords=keywords,
-                    from_date=from_date.strftime('%Y-%m-%d') if from_date else "",
-                    to_date=to_date.strftime('%Y-%m-%d') if to_date else "",
-                    max_pages=max_pages,
-                    consulting_only=consulting_only
-                )
-                
-                # Apply organization filter if provided
-                if organization_filter and bids:
-                    org_lower = organization_filter.lower()
-                    bids = [b for b in bids if org_lower in b.get('Department', '').lower()]
+                from gem_scraper import filter_new_bids
                 
                 if bids:
                     st.info(f"📊 Found {len(bids)} matching bids")
