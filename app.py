@@ -7,7 +7,8 @@ import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from gem_scraper import scrape_bids, download_document, extract_text_from_pdf, extract_hyperlinks_from_pdf
+from gem_scraper import download_document, extract_text_from_pdf, extract_hyperlinks_from_pdf
+from portal_scrapers import UnifiedScraper, PortalType
 from ai_analyzer import analyze_bid_complete
 from database import CIPDatabase
 from agent_scheduler import CIPAgent
@@ -991,12 +992,19 @@ if page == "🔎 Scraper":
         if daily_scrape:
             with st.spinner("🔄 Scraping bids from last 24 hours..."):
                 try:
-                    from gem_scraper import GemScraper
-                    scraper = GemScraper()
-                    bids = scraper.scrape_bids(
-                        search_term="Consultancy Services",
+                    # Calculate 24 hours ago
+                    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+                    today = datetime.now().strftime('%Y-%m-%d')
+                    
+                    # Use Unified Scraper for Daily Scrape (Default to GeM + Others if configured)
+                    unified = UnifiedScraper()
+                    bids = unified.scrape(
+                        portals=['gem'],  # Daily scrape defaults to GeM for now to maintain speed
+                        keywords="Consultancy Services",
+                        from_date=yesterday,
+                        to_date=today,
                         max_pages=5,
-                        filter_24h=True
+                        consulting_only=True
                     )
                     
                     if bids:
@@ -1095,12 +1103,15 @@ if page == "🔎 Scraper":
             if not selected_portals:
                 st.warning("⚠️ Please select at least one portal to search")
             else:
-                portal_names = ", ".join([p.value.upper() for p in selected_portals])
+                portal_names = ", ".join([p.name for p in selected_portals])
                 with st.spinner(f"Searching {portal_names}..."):
                     try:
                         unified_scraper = UnifiedScraper()
-                        scraped_bids = unified_scraper.scrape_portals(
-                            portals=selected_portals,
+                        # Convert PortalType enums to string values
+                        portal_values = [p.value for p in selected_portals]
+                        
+                        bids = unified_scraper.scrape(
+                            portals=portal_values,
                             keywords=keywords,
                             from_date=from_date.strftime('%Y-%m-%d') if from_date else "",
                             to_date=to_date.strftime('%Y-%m-%d') if to_date else "",
@@ -1108,8 +1119,10 @@ if page == "🔎 Scraper":
                             consulting_only=consulting_only
                         )
                         
-                        # Convert ScrapedBid objects to dict format
-                        bids = [bid.to_dict() for bid in scraped_bids]
+                        # Results are already dicts from UnifiedScraper.scrape
+                        # bids variable is already populated
+                        
+                        # Normalize keys if needed (UnifiedScraper returns consistent dicts)
                         
                         # Apply organization filter if provided
                         if organization_filter and bids:
@@ -1264,8 +1277,17 @@ if page == "🔎 Scraper":
                     with col1:
                         # Bid number and category
                         st.markdown(f"### {bid['Bid Number']}")
+                        
+                        # Category and Source Badge
+                        badges = []
                         if 'Category' in bid:
-                            st.caption(f"📂 {bid['Category']}")
+                            badges.append(f"📂 {bid['Category']}")
+                        
+                        source = bid.get('Source Portal', 'gem').upper()
+                        source_color = "#ff9900" if source == "GEM" else "#007bff" if source == "CPPP" else "#28a745"
+                        badges.append(f"<span style='background-color: {source_color}; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.8em;'>{source}</span>")
+                        
+                        st.markdown(" ".join(badges), unsafe_allow_html=True)
                     
                     with col2:
                         # CFS Score badge
@@ -1315,7 +1337,7 @@ if page == "🔎 Scraper":
         else:  # Table view
             df = pd.DataFrame(filtered_results)
             # Reorder columns
-            column_order = ['Bid Number', 'Category', 'CFS Score', 'Verdict', 
+            column_order = ['Bid Number', 'Source Portal', 'Category', 'CFS Score', 'Verdict', 
                            'Items', 'Department', 'End Date', 'Recommendation']
             display_columns = [col for col in column_order if col in df.columns]
             st.dataframe(df[display_columns], use_container_width=True, hide_index=True)

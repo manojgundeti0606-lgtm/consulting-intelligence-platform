@@ -35,6 +35,10 @@ ENV/
 .env
 .env.local
 
+# Credentials/Secrets
+client_secret*.json
+google_credentials.json
+
 # Database
 *.db
 *.sqlite3

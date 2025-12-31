@@ -265,6 +265,27 @@ class CIPAgent:
         elif job_name == 'watchlist':
             return self.monitor_watchlist()
 
+    def analyze_bid(self, bid: Dict) -> Dict:
+        """
+        Run on-demand analysis for a specific bid
+        """
+        # Download document
+        doc_link = bid.get('Document Link') or bid.get('document_link')
+        pdf_path = download_document(doc_link, bid_data=bid)
+        
+        # Extract SOW
+        sow_summary = ""
+        if pdf_path:
+            try:
+                from virtual_agent import BidReaderAgent
+                agent = BidReaderAgent(pdf_path)
+                sow_summary = agent.summarize_sow()
+            except Exception:
+                pass
+        
+        # Run Analysis
+        return analyze_bid_complete(bid, pdf_path=pdf_path, sow_text=sow_summary)
+
 
 if __name__ == "__main__":
     # Test the agent

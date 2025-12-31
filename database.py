@@ -108,9 +108,20 @@ class CIPDatabase:
         cursor = conn.cursor()
         
         cursor.execute('''
-            INSERT OR REPLACE INTO bids 
-            (bid_number, items, quantity, department, start_date, end_date, document_link, category, last_updated)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO bids 
+            (bid_number, items, quantity, department, start_date, end_date, document_link, category, source_portal, location, last_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(bid_number) DO UPDATE SET
+                items=excluded.items,
+                quantity=excluded.quantity,
+                department=excluded.department,
+                start_date=excluded.start_date,
+                end_date=excluded.end_date,
+                document_link=excluded.document_link,
+                category=excluded.category,
+                source_portal=excluded.source_portal,
+                location=excluded.location,
+                last_updated=CURRENT_TIMESTAMP
         ''', (
             bid_data.get('Bid Number'),
             bid_data.get('Items'),
@@ -119,7 +130,9 @@ class CIPDatabase:
             bid_data.get('Start Date'),
             bid_data.get('End Date'),
             bid_data.get('Document Link'),
-            bid_data.get('Category')
+            bid_data.get('Category'),
+            bid_data.get('Source Portal', 'gem'),
+            bid_data.get('Location', '')
         ))
         
         conn.commit()
