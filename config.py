@@ -135,14 +135,37 @@ NOTIFICATION_CONFIG = {
     "digest_path": "digests",
     "min_cfs_score": 50,  # Only include bids with CFS >= 50 in digest
     "enable_email": True,  # Send email digest after daily scrape
-    "enable_slack": False
+    "enable_slack": False,
+    "team_emails": [
+        "atul.shukla1@in.ey.com",
+        "vinayak.mishra1@in.ey.com",
+        "arjun.anand@in.ey.com"
+    ]
 }
+
+import os
+from dotenv import load_dotenv
+
+# Load local .env if it exists
+load_dotenv()
 
 # Database Configuration
 DATABASE_CONFIG = {
-    "db_path": "cip_data.db",
+    "db_type": os.getenv("DATABASE_TYPE", "sqlite"), # 'sqlite' or 'postgres'
+    "db_path": os.getenv("DB_PATH", "cip_data.db"),
     "backup_enabled": True,
-    "backup_interval_days": 7
+    "backup_interval_days": 7,
+    
+    # PostgreSQL / Cloud SQL Settings
+    "postgres": {
+        "host": os.getenv("DB_HOST", "localhost"),
+        "port": int(os.getenv("DB_PORT", 5432)),
+        "database": os.getenv("DB_NAME", "cip_db"),
+        "user": os.getenv("DB_USER", "postgres"),
+        "password": os.getenv("DB_PASSWORD", ""),
+        "use_cloud_sql_proxy": os.getenv("USE_CLOUD_SQL_PROXY", "False").lower() == "true",
+        "instance_connection_name": os.getenv("DB_INSTANCE_CONNECTION_NAME", "")
+    }
 }
 
 # Keyword Expansion Mappings
@@ -157,3 +180,169 @@ KEYWORD_EXPANSIONS = {
     "smart city": ["smart cities", "smart city mission", "urban development"],
     "e-governance": ["digital governance", "e-gov", "government digitalization"]
 }
+
+# Ministry of Defence (MoD) Organizations - For targeted Defence tender scraping
+MOD_ORGANIZATIONS = [
+    # Armed Forces & Academies (1-10)
+    "Indian Air Force",
+    "Airforce Academy",
+    "Armed Forces Films and Photo Division",
+    "Armed Forces Headquarters Civil Services",
+    "Armed Forces Medical College (India), Pune",
+    "Armed Forces Medical Services",
+    "Armed Forces Tribunal",
+    "Indian army",
+    "Army Purchase Organisation",
+    "Border Roads Engineering Service",
+    
+    # Border & Cantonment (11-26)
+    "Border Roads Organisation",
+    "Canteen Stores Department (CSD)",
+    "Cantonment Board, Aurangabad, Maharashtra",
+    "Cantonment Board, Delhi",
+    "Cantonment Board, Deolali, Maharashtra",
+    "Cantonment Board, Faizabad, Uttar Pradesh",
+    "Cantonment Board, Fatehgarh, Uttar Pradesh",
+    "Cantonment Board, Jabalpur, Madhya Pradesh",
+    "Cantonment Board, Jalandhar, Punjab",
+    "Cantonment Board, Kamptee, Maharashtra",
+    "Cantonment Board, Kanpur, Uttar Pradesh",
+    "Cantonment Board, Lansdowne, Uttarakhand",
+    "Cantonment Board, Lucknow, Uttar Pradesh",
+    "Cantonment Board, Pachmarhi, Madhya Pradesh",
+    "Cantonment Board, Shillong, Meghalaya",
+    "College of Defence Management, Secunderabad",
+    
+    # Defence Departments & Agencies (27-45)
+    "Defence Accounts Department",
+    "Defence Aeronautical Quality Assurance Service",
+    "Defence Cyber Agency",
+    "Defence Institute of Advanced Technology",
+    "Defence Institute of Psychological Research",
+    "Defence Quality Assurance Service",
+    "Defence Research and Development Service",
+    "Defence Services Staff College, Wellington Cantonment, The Nilgiris",
+    "Defence Space Research Agency (DSRA)",
+    "Department of Defence (DOD)",
+    "Department of Defence Production (DDP)",
+    "Defence Research and Development Organisation (DRDO)",
+    "Department of Ex-Servicemen Welfare",
+    "Department of Military Affairs (DMA)",
+    "Directorate General of Defence Estates, New Delhi",
+    "Directorate General Quality Assurance",
+    "Directorate General Resettlement, New Delhi",
+    "History Division, MoD",
+    "Indian Coast Guard",
+    
+    # Indian Defence Services (46-56)
+    "Indian Defence Accounts Service",
+    "Indian Defence Contract Management Service",
+    "Indian Defence Estates Service",
+    "Indian Defence Service of Engineers",
+    "Indian Military Academy, Dehradun",
+    "Indian Naval Academy",
+    "Indian Naval Armament Service",
+    "Indian Ordnance Factories Health Service",
+    "Indian Ordnance Factories Service",
+    "Institute for Defence Studies and Analyses",
+    "Military Engineer Services",
+    
+    # Training & Educational Institutions (57-67)
+    "Military Institute of Technology (MILIT), Pune",
+    "Ministry of Defence Library",
+    "National Cadet Corps",
+    "National Defence Academy, Pune",
+    "National Defence College, New Delhi",
+    "National Defence University",
+    "Indian Navy",
+    "Officers Training Academy, Chennai & Gaya",
+    "Rashtriyaa Indian Military College R.I.M.C",
+    "Rashtriya Military Schools",
+    "Recruitment and Assessment Centre (RAC), Defence Research and Development Organisation DRDO",
+    
+    # Special Divisions & Commands (68-76)
+    "Services Sports Control Board",
+    "St.Thomas Mount cum Pallavaram Cantonment Board, Tamil nadu",
+    "Strategic Information Services",
+    "Tactical Intelligence Division",
+    "Sainik Schools",
+    "Defence Image Processing and Analysis Centre DIPAC",
+    "HQ Integrated Defence Staff",
+    "Strategic Forces Command",
+    
+    # Army Commands (77-83)
+    "Central Command- Indian Army",
+    "Eastern Command- Indian Army",
+    "Northern Command- Indian Army",
+    "Southern Command- Indian Army",
+    "South Western Command- Indian Army",
+    "Western Command- Indian Army",
+    "Army Training Command- Indian Army",
+    
+    # Naval Commands (84-86)
+    "Western Naval Command- Indian Navy",
+    "Eastern Naval Command- Indian Navy",
+    "Southern Naval Command- Indian Navy",
+    
+    # Air Force Commands (87-93)
+    "Western Air Command- Indian Air Force",
+    "Central Air Command- Indian Air Force",
+    "South Western Air Command- Indian Air Force",
+    "Eastern Air Command- Indian Air Force",
+    "Southern Air Command- Indian Air Force",
+    "Training Command- Indian Air Force",
+    "Maintenance Command- Indian Air Force",
+    
+    # Joint Commands & Welfare Associations (94-96)
+    "Andaman Nicobar Command",
+    "Army Wives Welfare Association",
+    "Navy Wives Welfare Association",
+    "Air Force Wives Welfare Association",
+]
+
+# Defence Public Sector Undertakings (DPSUs)
+DEFENCE_PSUS = [
+    "Advanced Weapons and Equipment India Limited AWEIL",
+    "Armoured Vehicles Nigam Limited AVNL",
+    "Bharat Earth Movers Limited BEML",
+    "Bharat Electronics Limited BEL",
+    "Garden Reach Shipbuilders and Engineers Limited GRSE",
+    "GLIDERS INDIA LIMITED GIL",
+    "Goa Shipyard Limited",
+    "Hindustan Aeronautics Limited HAL",
+    "Hindustan Shipyard Limited HSL",
+    "India Optel Limited IOL",
+    "TROOP COMFORTS LIMITED TCL",
+    "Yantra India Limited YIL",
+    "Mazagon Dock Shipbuilders Limited",
+    "Bharat Dynamics Ltd",
+    "Munition India Limited",
+    "Mishra Dhatu Nigam Ltd MIDHANI",
+]
+
+# Combined list for searching
+ALL_DEFENCE_ORGANIZATIONS = MOD_ORGANIZATIONS + DEFENCE_PSUS
+
+# Short keywords for efficient matching (extracted from organization names)
+DEFENCE_ORG_KEYWORDS = [
+    # General Defence terms
+    "defence", "defense", "military", "armed forces", "MoD",
+    
+    # Service branches
+    "indian army", "indian navy", "indian air force", "coast guard",
+    "army", "navy", "air force", "IAF", "NCC",
+    
+    # Key organizations
+    "DRDO", "BEL", "HAL", "BEML", "ordnance", "cantonment",
+    "border roads", "BRO", "MES", "military engineer",
+    
+    # Commands
+    "command", "naval command", "air command",
+    
+    # Institutes & Academies
+    "defence academy", "NDA", "IMA", "sainik", "military academy",
+    
+    # DPSUs
+    "GRSE", "Goa Shipyard", "Mazagon Dock", "HSL", "Bharat Dynamics",
+    "MIDHANI", "Munition India", "AVNL", "AWEIL",
+]

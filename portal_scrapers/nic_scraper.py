@@ -78,8 +78,8 @@ class NICPortalScraper(BaseScraper):
     def _parse_tender_row(self, row, cells) -> Optional[ScrapedBid]:
         """Parse a single tender row from the table."""
         try:
-            # NIC portal table structure (typical):
-            # S.No | Organisation/Ministry | Tender Title | Tender Ref | Location | Closing Date | Document Link
+            # NIC portal table structure (Actual):
+            # 0: S.No | 1: e-Published Date | 2: Bid Submission Closing Date | 3: Tender Opening Date | 4: Title and Ref | 5: Organisation Chain
             
             if len(cells) < 5:
                 return None
@@ -88,28 +88,29 @@ class NICPortalScraper(BaseScraper):
             def get_text(cell):
                 return cell.get_text(strip=True) if cell else ""
             
-            # Try to find the tender link
+            # The title and ref are combined in cell 4
+            title_ref_cell = cells[4]
+            title_ref_text = get_text(title_ref_cell)
+            
+            # Try to find the tender link in cell 4
             tender_link = None
-            for link in row.find_all('a', href=True):
+            for link in title_ref_cell.find_all('a', href=True):
                 href = link.get('href', '')
                 if 'DirectLink' in href or 'TenderDetails' in href:
                     tender_link = urljoin(self.base_url, href)
                     break
             
-            # Extract data based on common NIC portal structure
-            org_ministry = get_text(cells[1]) if len(cells) > 1 else ""
-            title = get_text(cells[2]) if len(cells) > 2 else ""
-            tender_ref = get_text(cells[3]) if len(cells) > 3 else ""
-            location = get_text(cells[4]) if len(cells) > 4 else ""
-            closing_date = get_text(cells[5]) if len(cells) > 5 else ""
+            # Split title and ref-no if possible
+            # Usually format is "Title [Ref Num / Tender ID]"
+            title = title_ref_text
+            tender_ref = ""
+            if '[' in title_ref_text and ']' in title_ref_text:
+                parts = title_ref_text.split('[')
+                title = parts[0].strip()
+                tender_ref = parts[1].replace(']', '').strip()
             
-            # If no title, try to get from first meaningful cell
-            if not title and len(cells) > 1:
-                for cell in cells[1:]:
-                    text = get_text(cell)
-                    if len(text) > 20:  # Assume longer text is likely the title
-                        title = text
-                        break
+            org_ministry = get_text(cells[5]) if len(cells) > 5 else ""
+            closing_date = get_text(cells[2]) if len(cells) > 2 else ""
             
             if not tender_ref and not title:
                 return None
@@ -122,7 +123,7 @@ class NICPortalScraper(BaseScraper):
                 end_date=self._parse_date(closing_date),
                 document_link=tender_link,
                 category=None,
-                location=location,
+                location="",
                 source_portal=self.portal_type,
                 raw_data={
                     'cells': [get_text(c) for c in cells],
@@ -187,20 +188,25 @@ class NICPortalScraper(BaseScraper):
                     
                     soup = BeautifulSoup(response.text, 'html.parser')
                     
-                    # Find tender table
-                    tables = soup.find_all('table')
+                    # Find tender table specifically by ID
+                    table = soup.find('table', id='table')
+                    if not table:
+                        # Fallback to class if ID is missing (unlikely for NIC)
+                        table = soup.find('table', class_='list_table')
                     
-                    for table in tables:
+                    if table:
                         rows = table.find_all('tr')
                         
-                        for row in rows[1:]:  # Skip header row
+                        for row in rows: 
                             cells = row.find_all(['td', 'th'])
-                            bid = self._parse_tender_row(row, cells)
-                            if bid:
-                                all_bids.append(bid)
+                            # Basic validation: ensure it's a data row and matches column count
+                            if len(cells) >= 5 and not any(h in row.text for h in ['S.No', 'Organisation Chain']):
+                                bid = self._parse_tender_row(row, cells)
+                                if bid:
+                                    all_bids.append(bid)
                     
-                    # Check for next page link
-                    next_link = soup.find('a', string=re.compile(r'Next|›|>>'))
+                    # Check for next page link specifically by ID 'linkFwd'
+                    next_link = soup.find('a', id='linkFwd')
                     if next_link and next_link.get('href'):
                         tenders_url = urljoin(self.base_url, next_link['href'])
                     else:

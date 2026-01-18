@@ -10,7 +10,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from gem_scraper import scrape_bids, download_document
+from gem_scraper import download_document
+from portal_scrapers import UnifiedScraper, PortalType
 from ai_analyzer import analyze_bid_complete
 from database import CIPDatabase
 from config import SCHEDULER_CONFIG, NOTIFICATION_CONFIG, FIRM_PROFILE
@@ -30,13 +31,19 @@ class CIPAgent:
         """
         print(f"[{datetime.now()}] Starting Daily Intelligence Run...")
         
-        # Scrape consulting bids (using default settings)
-        bids = scrape_bids(
-            keywords="",  # Broad search
-            from_date="",
-            to_date="",
+        # Scrape consulting bids across all portals
+        scraper = UnifiedScraper()
+        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        bids = scraper.scrape(
+            portals=['gem', 'cppp', 'dppp'],
+            keywords="consultancy",
+            from_date=yesterday,
+            to_date=today,
             max_pages=10,
-            consulting_only=True
+            consulting_only=True,
+            date_filter_type='start'
         )
         
         print(f"Found {len(bids)} consulting bids")
@@ -105,8 +112,16 @@ class CIPAgent:
         if NOTIFICATION_CONFIG.get('enable_email', False):
             try:
                 from email_notifier import send_email_digest
-                print(f"Sending email digest with {len(high_fit_bids)} high-fit bids...")
-                if send_email_digest(high_fit_bids):
+                # Get recipients from DB
+                db_recipients = self.db.get_all_recipients()
+                if db_recipients:
+                    recipients = [r['email'] for r in db_recipients]
+                else:
+                    # Fallback to config
+                    recipients = NOTIFICATION_CONFIG.get('team_emails', [])
+                    
+                print(f"Sending email digest with {len(high_fit_bids)} high-fit bids to {len(recipients)} recipients...")
+                if send_email_digest(high_fit_bids, recipient_emails=recipients):
                     print("✅ Email digest sent successfully!")
                 else:
                     print("⚠️ Failed to send email digest")

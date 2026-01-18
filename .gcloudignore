@@ -1,0 +1,70 @@
+# Files to exclude from gcloud deployments
+# Similar to .gitignore but for Cloud Build/Run
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Environment files (use Secret Manager instead!)
+.env
+.env.local
+.env.production
+
+# Credentials (use Secret Manager!)
+google_credentials.json
+client_secret*.json
+*.pem
+*.key
+
+# Databases (ephemeral on Cloud Run)
+*.db
+*.sqlite3
+
+# Downloaded documents (use Cloud Storage instead)
+downloads/
+documents/
+*.pdf
+
+# Digests
+digests/
+
+# Test files
+test_output/
+tests/
+test_*.py
+debug_*.py
+
+# Documentation (not needed in container)
+*.md
+!README.md
+
+# Development files
+page.html
+gem_bids.csv
+models.txt
+*.log
+stderr.txt
+stdout.txt
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Batch scripts
+*.bat

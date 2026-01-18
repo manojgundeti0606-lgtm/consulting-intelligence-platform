@@ -4,14 +4,49 @@
 
 1. **Google Cloud Account** with billing enabled
 2. **Google Cloud SDK** installed ([Download](https://cloud.google.com/sdk/docs/install))
-3. **Docker** installed (for local testing)
+3. **Docker** installed
+
+---
+
+## Cloud SQL (PostgreSQL) Integration
+
+For persistent data, the application now supports PostgreSQL.
+
+### 1. Create a Cloud SQL Instance
+
+- Create a **PostgreSQL** instance in your GCP project.
+- Create a database (e.g., `cip_db`).
+- Create a user and password.
+
+### 2. Environment Variables for Cloud Run
+
+Add these to your Cloud Run configuration or Secret Manager:
+
+- `DATABASE_TYPE=postgres`
+- `DB_HOST=127.0.0.1` (if using Cloud SQL Proxy) or public/private IP
+- `DB_PORT=5432`
+- `DB_NAME=cip_db`
+- `DB_USER=postgres`
+- `DB_PASSWORD=your_password`
+
+### 3. Data Migration
+
+Run the migration script locally before or after deployment to move your existing SQLite data to the cloud:
+
+```bash
+python migrate_to_postgres.py
+```
+
+*(Note: Ensure your .env is configured with the cloud database credentials before running)*
 
 ## Files Created for Deployment
 
 | File | Purpose |
 |------|---------|
-| `Dockerfile` | Container image definition |
+| `Dockerfile` | Container image definition (with non-root user) |
 | `.dockerignore` | Files to exclude from image |
+| `.gcloudignore` | Files to exclude from GCP deployment |
+| `cloudbuild.yaml` | CI/CD pipeline configuration |
 | `requirements.txt` | Python dependencies |
 
 ---
@@ -121,8 +156,20 @@ gcloud app deploy
 | `SENDER_PASSWORD` | Gmail App Password | `xxxx xxxx xxxx` |
 | `EMAIL_ENABLED` | Enable email notifications | `true` |
 | `APP_URL` | Your deployed app URL | `https://your-app.run.app` |
+| `ADMIN_DEFAULT_PASSWORD` | Default admin password | `YourSecurePassword` |
 
 ---
+
+## Pre-Deployment Checklist
+
+Before deploying to production, complete these steps:
+
+- [ ] Set `ADMIN_DEFAULT_PASSWORD` environment variable (or it will auto-generate)
+- [ ] Configure `GOOGLE_API_KEY` for Gemini AI
+- [ ] Set up email credentials if using notifications
+- [ ] Update OAuth redirect URIs in Google Cloud Console
+- [ ] Test Docker build locally: `docker build -t cip-app:test .`
+- [ ] Run local test: `docker run -p 8080:8080 cip-app:test`
 
 ## Important Notes
 

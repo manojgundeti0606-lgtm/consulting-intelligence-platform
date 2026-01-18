@@ -192,3 +192,64 @@ DEFENCE_CATEGORIES = [
     "security",
     "strategic",
 ]
+
+
+def is_defence_organization(department: str) -> bool:
+    """
+    Check if a department/organization is from Ministry of Defence.
+    
+    Args:
+        department: The department or organization name from the bid
+        
+    Returns:
+        True if the organization is a MoD organization or DPSU
+    """
+    try:
+        from config import ALL_DEFENCE_ORGANIZATIONS, DEFENCE_ORG_KEYWORDS
+    except ImportError:
+        # Fallback if config import fails
+        return False
+    
+    if not department:
+        return False
+    
+    dept_lower = department.lower()
+    
+    # Check against full organization names (case-insensitive partial match)
+    for org in ALL_DEFENCE_ORGANIZATIONS:
+        org_lower = org.lower()
+        # Check if key parts of the org name appear in the department
+        org_parts = [p.strip() for p in org_lower.split(',')[0].split('(')[0].split() if len(p) > 3]
+        if len(org_parts) >= 2:
+            # Match if at least 2 significant words match
+            matches = sum(1 for part in org_parts if part in dept_lower)
+            if matches >= 2:
+                return True
+        # Direct substring match
+        if org_lower in dept_lower or dept_lower in org_lower:
+            return True
+    
+    # Check against short keywords
+    for keyword in DEFENCE_ORG_KEYWORDS:
+        if keyword.lower() in dept_lower:
+            return True
+    
+    return False
+
+
+def filter_defence_bids(bids: list) -> list:
+    """
+    Filter bids to include only those from MoD organizations.
+    
+    Args:
+        bids: List of ScrapedBid objects
+        
+    Returns:
+        Filtered list containing only defence-related bids
+    """
+    defence_bids = []
+    for bid in bids:
+        if is_defence_organization(bid.department):
+            defence_bids.append(bid)
+    return defence_bids
+

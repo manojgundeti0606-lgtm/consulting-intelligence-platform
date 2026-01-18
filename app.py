@@ -12,9 +12,85 @@ from portal_scrapers import UnifiedScraper, PortalType
 from ai_analyzer import analyze_bid_complete
 from database import CIPDatabase
 from agent_scheduler import CIPAgent
-from config import FIRM_PROFILE, NOTIFICATION_CONFIG, CONSULTING_TAXONOMY, KEYWORD_EXPANSIONS, SCRAPING_CONFIG
+from config import FIRM_PROFILE, NOTIFICATION_CONFIG, CONSULTING_TAXONOMY, KEYWORD_EXPANSIONS, SCRAPING_CONFIG, ALL_DEFENCE_ORGANIZATIONS
 from virtual_agent import BidReaderAgent
 from auth import AuthManager, init_session, is_logged_in, is_admin, get_current_user, login_user, logout_user
+from email_notifier import send_email_digest
+
+# Team Recipients
+# TEAM_EMAILS is now managed via database, falling back to config if needed during migration
+TEAM_EMAILS_DEPRECATED = NOTIFICATION_CONFIG.get('team_emails', [])
+
+def get_team_emails():
+    """Fetch team emails from DB or config"""
+    try:
+        if 'db' in st.session_state:
+            recipients = st.session_state.db.get_all_recipients()
+            if recipients:
+                return [r['email'] for r in recipients]
+    except:
+        pass
+    return TEAM_EMAILS_DEPRECATED
+
+def trigger_team_email(bids_list, source_name="Report"):
+    """
+    Helper to adapt flat bid list to nested structure and send email.
+    """
+    if not bids_list:
+        st.warning("No bids to email.")
+        return
+
+    # Adapt flat structure to nested expected by email_notifier
+    # Flat: { ..., 'CFS Score': ..., 'Verdict': ..., 'Recommendation': ... }
+    # Nested: { 'bid': {...}, 'analysis': { 'cfs': {...}, 'go_no_go': {...} } }
+    
+    adapted_bids = []
+    for bid in bids_list:
+        # Reconstruct analysis dict from flat fields if present
+        cfs = {
+            'score': bid.get('CFS Score', 0),
+            'verdict': bid.get('Verdict', 'N/A'),
+            'reasoning': bid.get('Reasoning', 'N/A') # Assuming Reasoning might be flattened
+        }
+        go_no_go = {
+            'overall_recommendation': bid.get('Recommendation', 'N/A')
+        }
+        # If original analysis logic was full, we might want to fetch full object from DB
+        # But for now, we reconstruct enough for the email report
+        
+        # Try to get full details from DB if possible for better report
+        full_analysis = {}
+        if 'Bid Number' in bid:
+            try:
+                cached = st.session_state.db.get_ai_analysis(bid['Bid Number'])
+                if cached:
+                    full_analysis = cached
+            except:
+                pass
+        
+        if not full_analysis:
+            full_analysis = {
+                'cfs': cfs,
+                'go_no_go': go_no_go,
+                'executive_summary': bid.get('executive_summary', {})
+            }
+
+        adapted_bids.append({
+            'bid': bid,
+            'analysis': full_analysis,
+            'sow_summary': bid.get('sow_summary', '')
+        })
+
+    recipients = get_team_emails()
+    with st.spinner(f"Sending email to team ({len(recipients)} recipients)..."):
+        subject = f"📊 {source_name}: {len(bids_list)} Bids Found - {datetime.now().strftime('%d %b %Y')}"
+        success = send_email_digest(adapted_bids, recipient_emails=recipients, subject=subject)
+        
+        if success:
+            st.toast(f"✅ Email sent to team!", icon="📧")
+            st.success(f"Report sent to: {', '.join(recipients)}")
+        else:
+            st.error("Failed to send email. Check logs.")
 
 # Page config
 st.set_page_config(
@@ -708,8 +784,9 @@ init_session()
 # Initialize database
 if 'db' not in st.session_state:
     st.session_state.db = CIPDatabase()
-elif not hasattr(st.session_state.db, 'get_recent_bids_with_analysis'):
-    st.session_state.db = CIPDatabase()
+    
+if 'auth_manager' not in st.session_state:
+    st.session_state.auth_manager = AuthManager()
 
 # Initialize agent
 if 'agent' not in st.session_state:
@@ -987,7 +1064,15 @@ if page == "🔎 Scraper":
         st.markdown("### Daily Scraper (Last 24 Hours)")
         st.caption("Scrape and analyze bids published in the last 24 hours")
         
-        daily_scrape = st.button("▶️ Run Daily Scrape Now", type="primary", use_container_width=True)
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            daily_scrape = st.button("▶️ Run Daily Scrape Now", type="primary", use_container_width=True)
+        with col2:
+            if st.button("📧 Email Report", key="daily_email_btn", use_container_width=True):
+                if 'current_results' in st.session_state and st.session_state['current_results']:
+                    trigger_team_email(st.session_state['current_results'], source_name="Daily Scraper")
+                else:
+                    st.warning("⚠️ Run a scrape first to generate a report.")
         
         if daily_scrape:
             with st.spinner("🔄 Scraping bids from last 24 hours..."):
@@ -999,12 +1084,13 @@ if page == "🔎 Scraper":
                     # Use Unified Scraper for Daily Scrape (Default to GeM + Others if configured)
                     unified = UnifiedScraper()
                     bids = unified.scrape(
-                        portals=['gem'],  # Daily scrape defaults to GeM for now to maintain speed
-                        keywords="Consultancy Services",
+                        portals=['gem', 'cppp', 'dppp'],
+                        keywords="consultancy",
                         from_date=yesterday,
                         to_date=today,
                         max_pages=5,
-                        consulting_only=True
+                        consulting_only=True,
+                        date_filter_type='start'
                     )
                     
                     if bids:
@@ -1054,12 +1140,16 @@ if page == "🔎 Scraper":
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            organization_filter = st.text_input(
+            # Combined organization list for dropdown
+            organization_options = ["All Organizations"] + sorted(ALL_DEFENCE_ORGANIZATIONS)
+            selected_org = st.selectbox(
                 "🏛️ Organization / Ministry",
-                placeholder="e.g., Ministry of Defence, NIC, UIDAI",
-                help="Filter by organization or ministry name",
+                options=organization_options,
+                index=0,
+                help="Select an organization or ministry to filter",
                 key="intel_org"
             )
+            organization_filter = "" if selected_org == "All Organizations" else selected_org
         
         with col2:
             from_date = st.date_input(
@@ -1325,7 +1415,7 @@ if page == "🔎 Scraper":
                             st.session_state.db.add_to_watchlist(bid['Bid Number'])
                             st.success("Added!")
                     with col2:
-                        st.link_button("📄 Document", bid.get('Document Link', '#'))
+                        st.link_button("📄 Document", bid.get('Document Link') or '#')
                     with col3:
                         display_links_button(bid, f"dashboard_{i}")
                     with col4:
@@ -1344,7 +1434,7 @@ if page == "🔎 Scraper":
         
         # Export options
         st.divider()
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
             # CSV export
             df = pd.DataFrame(filtered_results)
@@ -1356,14 +1446,16 @@ if page == "🔎 Scraper":
                 mime="text/csv"
             )
         with col2:
-            # JSON export with AI metadata
-            json_data = json.dumps(filtered_results, indent=2, ensure_ascii=False)
             st.download_button(
                 "📥 Download JSON (with AI data)",
                 data=json_data,
                 file_name=f"cip_results_{datetime.now().strftime('%Y%m%d')}.json",
                 mime="application/json"
             )
+        with col3:
+            # Email to Team
+            if st.button("📧 Email to Team", key="email_results_btn", use_container_width=True):
+                trigger_team_email(filtered_results, source_name="Intelligence Data")
 
 
 
@@ -1381,10 +1473,12 @@ elif page == "⭐ Watchlist":
     else:
         st.success(f"Monitoring {len(watchlist)} bids")
         
+        watchlist_bids = []
         for bid_number in watchlist:
             bid_data = st.session_state.db.get_bid_with_analysis(bid_number)
             
             if bid_data:
+                watchlist_bids.append(bid_data)
                 with st.container(border=True):
                     col1, col2 = st.columns([5, 1])
                     
@@ -1398,10 +1492,15 @@ elif page == "⭐ Watchlist":
                             st.session_state.db.remove_from_watchlist(bid_number)
                             st.rerun()
         
-        if st.button("🔄 Check for Updates", type="primary"):
-            with st.spinner("Checking watchlist..."):
-                st.session_state.agent.monitor_watchlist()
-                st.success("Watchlist checked!")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 Check for Updates", type="primary", use_container_width=True):
+                with st.spinner("Checking watchlist..."):
+                    st.session_state.agent.monitor_watchlist()
+                    st.success("Watchlist checked!")
+        with col2:
+             if st.button("📧 Email Watchlist to Team", key="email_watchlist_btn", use_container_width=True):
+                trigger_team_email(watchlist_bids, source_name="Watchlist")
 
 # Page 3: Analytics
 elif page == "📊 Analytics":
@@ -1446,7 +1545,7 @@ elif page == "🔧 Admin":
     # Admin sub-navigation
     admin_tab = st.radio(
         "Admin Section",
-        ["📋 Firm Profile", "🔑 Keywords & Taxonomy", "⚙️ Scraping Settings", "👥 Users"],
+        ["📋 Firm Profile", "🔑 Keywords & Taxonomy", "⚙️ Scraping Settings", "📧 Email Management", "👥 Users"],
         horizontal=True
     )
     
@@ -1546,6 +1645,7 @@ elif page == "🔧 Admin":
         st.divider()
         
         # API Key Status
+# Page Configuration
         st.markdown("### API Configuration")
         if os.getenv('GOOGLE_API_KEY'):
             st.success("✅ Gemini API Key configured")
@@ -1591,6 +1691,47 @@ elif page == "🔧 Admin":
                                 st.session_state.auth_manager.set_admin_status(user['id'], True)
                                 st.success(f"Granted admin to {user['username']}")
                                 st.rerun()
+
+    elif admin_tab == "📧 Email Management":
+        st.subheader("📧 Email Recipient Management")
+        st.info("Manage the list of team members who receive automated and manual reports.")
+        
+        # Add new recipient
+        with st.form("add_email_form", clear_on_submit=True):
+            col1, col2 = st.columns([2, 2])
+            with col1:
+                new_email = st.text_input("Email Address", placeholder="user@company.com")
+            with col2:
+                new_name = st.text_input("Name (Optional)", placeholder="John Doe")
+            
+            submitted = st.form_submit_button("➕ Add Recipient")
+            if submitted and new_email:
+                if st.session_state.db.add_recipient(new_email, new_name):
+                    st.success(f"Added {new_email}")
+                    st.rerun()
+                else:
+                    st.error("Failed to add email. It might already exist.")
+        
+        st.divider()
+        
+        # List recipients
+        recipients = st.session_state.db.get_all_recipients()
+        
+        if not recipients:
+            st.warning("No recipients configured. Emails will fall back to config file.")
+        else:
+            st.write(f"**Current Recipients ({len(recipients)}):**")
+            
+            for i, r in enumerate(recipients):
+                col1, col2, col3 = st.columns([3, 2, 1])
+                with col1:
+                    st.markdown(f"📧 **{r['email']}**")
+                with col2:
+                    st.caption(f"👤 {r['name'] or 'N/A'}")
+                with col3:
+                    if st.button("🗑️ Remove", key=f"del_email_{i}"):
+                        st.session_state.db.remove_recipient(r['email'])
+                        st.rerun()
                     else:
                         st.caption("(Your account)")
                 

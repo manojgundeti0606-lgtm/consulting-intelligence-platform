@@ -219,188 +219,71 @@ def generate_bid_report_html(bid: Dict, analysis: Dict) -> str:
 def generate_full_bid_section_html(item: Dict, index: int) -> str:
     """
     Generate inline full analysis HTML for a single bid to embed in email.
-    Includes SOW, CFS Scores, A&D Analysis, and all details.
-    
-    Args:
-        item: Dict with 'bid', 'analysis', 'ad_analysis', 'sow_summary'
-        index: Bid number for display
-        
-    Returns:
-        HTML string for this bid section
+    Matches user's requested "Dark Header" card design.
     """
     bid = item.get('bid', {})
-    analysis = item.get('analysis', {})
-    ad_analysis = item.get('ad_analysis', {})
-    sow_summary = item.get('sow_summary', 'SOW not extracted')
+    sow_summary = item.get('sow_summary', 'Not specified')
     
     # Basic bid info
     bid_num = bid.get('Bid Number', 'N/A')
     items = bid.get('Items', 'N/A')
-    department = bid.get('Department', 'N/A')
-    organisation = bid.get('Organisation', department)  # Fallback to department
+    department = bid.get('Department', '')
+    organisation = bid.get('Organisation', department)
     end_date = bid.get('End Date', 'N/A')
-    emd = bid.get('EMD', bid.get('emd', 'N/A'))  # Get EMD value
-    doc_link = bid.get('Document Link', '#')
+    start_date = bid.get('Start Date', 'Not specified')
+    emd = bid.get('EMD', bid.get('emd', 'N/A'))
+    portal = bid.get('Source Portal', 'GeM')
     
-    # Generate app link for Read More (opens in Load History with bid number)
-    app_base_url = os.getenv('APP_URL', 'http://localhost:8518')
-    read_more_link = f"{app_base_url}?page=history&bid={bid_num}"
-    
-    # CFS Analysis
-    cfs = analysis.get('cfs', {})
-    score = cfs.get('score', 0)
-    verdict = cfs.get('verdict', 'N/A')
-    reasoning = cfs.get('reasoning', 'No reasoning available')
-    
-    go_no_go = analysis.get('go_no_go', {})
-    recommendation = go_no_go.get('overall_recommendation', 'N/A')
-    
-    exec_summary = analysis.get('executive_summary', {})
-    the_ask = exec_summary.get('the_ask', 'N/A') if isinstance(exec_summary, dict) else 'N/A'
-    deliverables = exec_summary.get('key_deliverables', []) if isinstance(exec_summary, dict) else []
-    
-    # A&D Analysis
-    ad_score = ad_analysis.get('a_d_relevance_score', 0) if ad_analysis else 0
-    ad_rec = ad_analysis.get('recommendation', 'N/A') if ad_analysis else 'N/A'
-    ad_category = ad_analysis.get('a_d_sub_category', 'N/A') if ad_analysis else 'N/A'
-    ad_confidence = ad_analysis.get('confidence', 0) if ad_analysis else 0
-    ad_keywords = ad_analysis.get('matched_keywords', []) if ad_analysis else []
-    
-    # Risk Assessment
-    risk = ad_analysis.get('risk_assessment', {}) if ad_analysis else {}
-    
-    # Colors
-    score_color = "#11998e" if score >= 70 else "#f5a623" if score >= 50 else "#e74c3c"
-    rec_color = "#11998e" if recommendation == "GO" else "#e74c3c" if recommendation == "NO_GO" else "#f5a623"
-    ad_score_color = "#11998e" if ad_score >= 70 else "#f5a623" if ad_score >= 50 else "#e74c3c"
-    ad_rec_color = "#11998e" if ad_rec == "PURSUE" else "#e74c3c" if ad_rec == "PASS" else "#f5a623"
-    
-    # Deliverables HTML
-    deliverables_html = ""
-    if deliverables:
-        for d in deliverables[:5]:
-            deliverables_html += f"<li style='margin: 5px 0; color: #333;'>{d}</li>"
-    else:
-        deliverables_html = "<li style='color: #666;'>Not available</li>"
-    
-    # Keywords HTML
-    keywords_html = ", ".join(str(k) for k in ad_keywords[:10]) if ad_keywords else "None detected"
-    
-    # Risk HTML
-    def get_risk_color(val):
-        if val == "Low": return "#11998e"
-        elif val == "Medium": return "#f5a623"
-        elif val == "High": return "#e74c3c"
-        return "#666"
+    # Generate app link
+    # Using a direct deep link structure if supported, or generic
+    app_base_url = os.getenv('APP_URL', 'http://localhost:8501')
+    read_more_link = f"{app_base_url}?bidId={bid_num}"
     
     html = f"""
-    <div style="background: white; border-radius: 16px; margin: 25px 0; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1); border: 1px solid #e0e0e0;">
-        <!-- Bid Header -->
-        <div style="background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 25px;">
-            <div style="font-size: 12px; opacity: 0.9; margin-bottom: 5px;">BID #{index}</div>
-            <div style="font-size: 20px; font-weight: bold; margin-bottom: 8px;">{bid_num}</div>
-            <div style="font-size: 14px; opacity: 0.9;">{items[:100]}{'...' if len(items) > 100 else ''}</div>
+    <div style="border: 1px solid #ddd; background: #fff; margin-bottom: 20px; font-family: Arial, sans-serif;">
+        <!-- Header -->
+        <div style="background-color: #333; color: #fff; padding: 10px 15px; font-weight: bold; font-size: 14px;">
+            {index}) Bid: {items}
         </div>
         
-        <!-- Score Cards Row -->
-        <div style="display: flex; justify-content: center; gap: 15px; padding: 20px; background: #f8f9fa; flex-wrap: wrap;">
-            <div style="background: {score_color}; color: white; padding: 15px 25px; border-radius: 10px; text-align: center; min-width: 80px;">
-                <div style="font-size: 28px; font-weight: bold;">{score}</div>
-                <div style="font-size: 11px; opacity: 0.9;">CFS Score</div>
-            </div>
-            <div style="background: {rec_color}; color: white; padding: 15px 25px; border-radius: 10px; text-align: center; min-width: 80px;">
-                <div style="font-size: 18px; font-weight: bold;">{recommendation}</div>
-                <div style="font-size: 11px; opacity: 0.9;">Recommendation</div>
-            </div>
-            <div style="background: {ad_score_color}; color: white; padding: 15px 25px; border-radius: 10px; text-align: center; min-width: 80px;">
-                <div style="font-size: 28px; font-weight: bold;">{ad_score:.0f}</div>
-                <div style="font-size: 11px; opacity: 0.9;">A&D Score</div>
-            </div>
-            <div style="background: {ad_rec_color}; color: white; padding: 15px 25px; border-radius: 10px; text-align: center; min-width: 80px;">
-                <div style="font-size: 18px; font-weight: bold;">{ad_rec}</div>
-                <div style="font-size: 11px; opacity: 0.9;">A&D Action</div>
-            </div>
-        </div>
-        
-        <!-- Main Content -->
-        <div style="padding: 25px;">
-            <!-- Bid Details -->
-            <div style="margin-bottom: 25px;">
-                <h3 style="color: #667eea; font-size: 16px; margin: 0 0 15px 0; border-bottom: 2px solid #667eea; padding-bottom: 8px;">📋 Bid Details</h3>
-                <table style="width: 100%; border-collapse: collapse;">
-                    <tr><td style="padding: 8px 0; color: #555; width: 150px;"><strong>Ministry/Org:</strong></td><td style="color: #333;">{organisation}</td></tr>
-                    <tr><td style="padding: 8px 0; color: #555;"><strong>Department:</strong></td><td style="color: #333;">{department}</td></tr>
-                    <tr><td style="padding: 8px 0; color: #555;"><strong>End Date:</strong></td><td style="color: #e74c3c; font-weight: bold;">{end_date}</td></tr>
-                    <tr><td style="padding: 8px 0; color: #555;"><strong>EMD Amount:</strong></td><td style="color: #333; font-weight: bold;">₹ {emd}</td></tr>
-                    <tr><td style="padding: 8px 0; color: #555;"><strong>Verdict:</strong></td><td style="color: #333;">{verdict}</td></tr>
-                    <tr><td style="padding: 8px 0; color: #555;"><strong>A&D Category:</strong></td><td style="color: #333;">{ad_category}</td></tr>
-                    <tr><td style="padding: 8px 0; color: #555;"><strong>Document:</strong></td><td><a href="{doc_link}" style="color: #667eea;">View Tender Document →</a></td></tr>
-                </table>
+        <!-- Body -->
+        <div style="padding: 15px; font-size: 13px; color: #333;">
+            <!-- Row 1 -->
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px;">
+                <tr>
+                    <td style="vertical-align: top; width: 33%;">
+                        <strong>Bid no.:</strong> {bid_num}
+                    </td>
+                    <td style="vertical-align: top; width: 33%;">
+                        <strong>Ministry/Organisation:</strong><br>
+                        {organisation}
+                    </td>
+                    <td style="vertical-align: top; width: 33%; text-align: right; color: #d9534f; font-weight: bold;">
+                        Deadline:<br>
+                        {end_date}
+                    </td>
+                </tr>
+            </table>
+            
+            <!-- Row 2: EMD -->
+            <div style="margin-bottom: 10px;">
+                <strong>EMD:</strong> {emd}
             </div>
             
-            <!-- The Ask -->
-            <div style="margin-bottom: 25px;">
-                <h3 style="color: #667eea; font-size: 16px; margin: 0 0 15px 0; border-bottom: 2px solid #667eea; padding-bottom: 8px;">🎯 The Ask</h3>
-                <p style="color: #333; line-height: 1.6; margin: 0;">{the_ask}</p>
-            </div>
-            
-            <!-- Key Deliverables -->
-            <div style="margin-bottom: 25px;">
-                <h3 style="color: #667eea; font-size: 16px; margin: 0 0 15px 0; border-bottom: 2px solid #667eea; padding-bottom: 8px;">📦 Key Deliverables</h3>
-                <ul style="margin: 0; padding-left: 20px;">{deliverables_html}</ul>
+            <!-- Row 3: Other details -->
+            <div style="margin-bottom: 10px; color: #666;">
+                Other details: Portal: {portal}; Published: {start_date}
             </div>
             
             <!-- SOW Summary -->
-            <div style="margin-bottom: 25px;">
-                <h3 style="color: #667eea; font-size: 16px; margin: 0 0 15px 0; border-bottom: 2px solid #667eea; padding-bottom: 8px;">📋 Scope of Work Summary</h3>
-                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea; color: #333; line-height: 1.6; max-height: 200px; overflow: hidden;">
-                    {sow_summary[:1500]}{'...' if len(sow_summary) > 1500 else ''}
-                </div>
+            <div style="margin-bottom: 15px;">
+                <strong>SOW summary:</strong> {sow_summary[:300]}{'...' if len(sow_summary) > 300 else ''}
             </div>
             
-            <!-- AI Reasoning -->
-            <div style="margin-bottom: 25px;">
-                <h3 style="color: #667eea; font-size: 16px; margin: 0 0 15px 0; border-bottom: 2px solid #667eea; padding-bottom: 8px;">💡 AI Reasoning</h3>
-                <div style="background: #f0f4ff; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea; color: #333; line-height: 1.6;">
-                    {reasoning}
-                </div>
-            </div>
-            
-            <!-- A&D Intelligence Section -->
-            <div style="margin-bottom: 15px; background: #f8f9fa; padding: 20px; border-radius: 10px;">
-                <h3 style="color: #667eea; font-size: 16px; margin: 0 0 15px 0;">📊 A&D Intelligence Analysis</h3>
-                
-                <div style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 15px;">
-                    <div style="flex: 1; min-width: 100px;">
-                        <div style="font-size: 11px; color: #666; text-transform: uppercase;">Confidence</div>
-                        <div style="font-size: 18px; font-weight: bold; color: #333;">{ad_confidence:.0f}%</div>
-                    </div>
-                    <div style="flex: 1; min-width: 100px;">
-                        <div style="font-size: 11px; color: #666; text-transform: uppercase;">Impl. Risk</div>
-                        <div style="font-size: 14px; font-weight: bold; color: {get_risk_color(risk.get('implementation_risk', 'N/A'))};">{risk.get('implementation_risk', 'N/A')}</div>
-                    </div>
-                    <div style="flex: 1; min-width: 100px;">
-                        <div style="font-size: 11px; color: #666; text-transform: uppercase;">Scope Creep</div>
-                        <div style="font-size: 14px; font-weight: bold; color: {get_risk_color(risk.get('scope_creep_risk', 'N/A'))};">{risk.get('scope_creep_risk', 'N/A')}</div>
-                    </div>
-                    <div style="flex: 1; min-width: 100px;">
-                        <div style="font-size: 11px; color: #666; text-transform: uppercase;">Win Prob.</div>
-                        <div style="font-size: 14px; font-weight: bold; color: {get_risk_color(risk.get('win_probability', 'N/A'))};">{risk.get('win_probability', 'N/A')}</div>
-                    </div>
-                </div>
-                
-                <div>
-                    <div style="font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 5px;">Matched Keywords</div>
-                    <div style="font-size: 13px; color: #333;">{keywords_html}</div>
-                </div>
-            </div>
-            
-            <!-- Read More Button -->
-            <div style="text-align: center; padding: 20px 0; border-top: 1px solid #e0e0e0; margin-top: 20px;">
-                <a href="{read_more_link}" style="display: inline-block; background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 14px 40px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 14px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">
-                    📖 Read More in App →
-                </a>
-            </div>
+            <!-- Button -->
+            <a href="{read_more_link}" style="display: inline-block; background-color: #ffeb3b; color: #000; padding: 8px 15px; text-decoration: none; font-weight: bold; border-radius: 2px; font-size: 12px;">
+                Read more &rarr;
+            </a>
         </div>
     </div>
     """
@@ -409,102 +292,53 @@ def generate_full_bid_section_html(item: Dict, index: int) -> str:
 
 def generate_digest_email_html(bids_with_analysis: List[Dict]) -> str:
     """
-    Generate the main digest email HTML with FULL INLINE analysis for each bid.
-    
-    Args:
-        bids_with_analysis: List of dicts with 'bid', 'analysis', 'ad_analysis', 'sow_summary'
-        
-    Returns:
-        HTML string for email body
+    Generate the main digest email HTML.
     """
-    date_str = datetime.now().strftime('%B %d, %Y')
+    # Calculate nearest deadline
+    nearest_deadline = "N/A"
+    deadlines = []
+    for item in bids_with_analysis:
+        ed = item['bid'].get('End Date')
+        if ed:
+            try:
+                # Try parsing standard formats
+                dt = datetime.strptime(ed, "%d-%m-%Y %I:%M %p") # e.g. 29-12-2024 08:30 PM
+                deadlines.append(dt)
+            except:
+                pass
     
-    # Group by recommendation
-    go_bids = [b for b in bids_with_analysis if b.get('analysis', {}).get('go_no_go', {}).get('overall_recommendation') == 'GO']
-    maybe_bids = [b for b in bids_with_analysis if b.get('analysis', {}).get('go_no_go', {}).get('overall_recommendation') == 'MAYBE']
-    nogo_bids = [b for b in bids_with_analysis if b.get('analysis', {}).get('go_no_go', {}).get('overall_recommendation') == 'NO_GO']
-    
-    # Generate inline reports for each bid
-    go_reports = ""
-    for i, item in enumerate(go_bids, 1):
-        go_reports += generate_full_bid_section_html(item, i)
-    
-    maybe_reports = ""
-    for i, item in enumerate(maybe_bids, 1):
-        maybe_reports += generate_full_bid_section_html(item, i)
+    if deadlines:
+        nearest_deadline = min(deadlines).strftime("%d %b %Y, %I:%M %p")
+
+    # Generate cards
+    cards_html = ""
+    for i, item in enumerate(bids_with_analysis, 1):
+        cards_html += generate_full_bid_section_html(item, i)
     
     html = f"""
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
-            body {{ font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }}
-            .container {{ max-width: 900px; margin: 0 auto; }}
-            .header {{ background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 40px; text-align: center; border-radius: 16px 16px 0 0; }}
-            .header h1 {{ margin: 0 0 10px 0; font-size: 28px; }}
-            .header .date {{ font-size: 16px; opacity: 0.9; }}
-            .stats {{ display: flex; justify-content: center; gap: 20px; padding: 30px; background: white; flex-wrap: wrap; }}
-            .stat-card {{ background: #f8f9fa; padding: 20px 30px; border-radius: 10px; text-align: center; min-width: 100px; }}
-            .stat-value {{ font-size: 32px; font-weight: bold; }}
-            .stat-label {{ font-size: 12px; color: #666; margin-top: 5px; text-transform: uppercase; }}
-            .section {{ padding: 20px 0; }}
-            .section-title {{ font-size: 22px; color: #333; margin: 30px 0 20px 0; padding-bottom: 10px; border-bottom: 3px solid #667eea; }}
-            .footer {{ background: white; padding: 30px; text-align: center; font-size: 12px; color: #666; border-radius: 0 0 16px 16px; margin-top: 20px; }}
+            body {{ font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #fff; color: #333; }}
         </style>
     </head>
     <body>
-        <div class="container">
-            <div class="header">
-                <h1>🎯 Daily Intelligence Digest</h1>
-                <div class="date">{date_str}</div>
-                <div style="margin-top: 15px; font-size: 14px;">Consulting Intelligence Platform - Full Analysis Report</div>
-            </div>
+        <div style="max-width: 900px; margin: 0 auto;">
+            <p style="font-size: 14px; margin-bottom: 5px;">Hello Team,</p>
+            <p style="font-size: 14px; color: #555; margin-bottom: 25px;">
+                We found <strong style="color: #000;">{len(bids_with_analysis)} new bid(s)</strong> in the last 24 hours. 
+                The nearest deadline is <strong style="color: #d9534f;">{nearest_deadline}</strong>. 
+                Open Load History in the app for full details and analysis.
+            </p>
             
-            <div class="stats">
-                <div class="stat-card">
-                    <div class="stat-value" style="color: #11998e;">{len(go_bids)}</div>
-                    <div class="stat-label">GO / Pursue</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value" style="color: #f5a623;">{len(maybe_bids)}</div>
-                    <div class="stat-label">Evaluate</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value" style="color: #e74c3c;">{len(nogo_bids)}</div>
-                    <div class="stat-label">Pass</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value" style="color: #667eea;">{len(bids_with_analysis)}</div>
-                    <div class="stat-label">Total Analyzed</div>
-                </div>
-            </div>
-            
-            <!-- GO Recommendations with Full Reports -->
-            <div class="section">
-                <h2 class="section-title">✅ GO / PURSUE Recommendations</h2>
-                {go_reports if go_reports else "<p style='color: #666; text-align: center; padding: 30px;'>No GO recommendations today</p>"}
-            </div>
-            
-            <!-- MAYBE Recommendations with Full Reports -->
-            {f'''
-            <div class="section">
-                <h2 class="section-title">⚠️ EVALUATE Recommendations</h2>
-                {maybe_reports}
-            </div>
-            ''' if maybe_bids else ""}
-            
-            <div class="footer">
-                <p style="margin: 0 0 10px 0;">📊 This report includes full SOW extraction, CFS Analysis, and A&D Intelligence for each bid.</p>
-                <p style="margin: 0;">Generated by <strong>Consulting Intelligence Platform</strong> | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-            </div>
+            {cards_html}
         </div>
     </body>
     </html>
     """
     return html
-
 
 def save_bid_report(bid: Dict, analysis: Dict, output_dir: str = "reports") -> str:
     """

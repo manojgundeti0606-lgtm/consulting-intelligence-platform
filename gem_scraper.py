@@ -61,14 +61,18 @@ def filter_new_bids(bids: List[Dict], db=None) -> Tuple[List[Dict], List[Dict]]:
 
 def get_csrf_token(session):
     # print("Fetching main page to get CSRF token...")
-    response = session.get(ALL_BIDS_URL)
-    response.raise_for_status()
-    
-    match = re.search(r"'csrf_bd_gem_nk':\s*'([^']+)'", response.text)
-    if match:
-        return match.group(1)
-    else:
-        raise ValueError("CSRF token not found in page source")
+    try:
+        response = session.get(ALL_BIDS_URL)
+        response.raise_for_status()
+        
+        match = re.search(r"'csrf_bd_gem_nk':\s*'([^']+)'", response.text)
+        if match:
+            return match.group(1)
+        else:
+            raise ValueError("CSRF token not found in page source")
+    except Exception as e:
+        print(f"Error getting CSRF token: {e}")
+        return None
 
 
 def expand_keywords(keyword: str) -> List[str]:
@@ -137,16 +141,17 @@ def is_consulting_bid(bid_data: Dict) -> Tuple[bool, Optional[str]]:
     return (False, None)
 
 
-def scrape_bids(keywords="", from_date="", to_date="", max_pages=None, consulting_only=True):
+def scrape_bids(keywords="", from_date="", to_date="", max_pages=None, consulting_only=True, **kwargs):
     """
     Enhanced bid scraper with consulting taxonomy filtering
     
     Args:
         keywords: Search keywords
-        from_date: Start date (YYYY-MM-DD)
-        to_date: End date (YYYY-MM-DD)
+        from_date: Date filter (YYYY-MM-DD)
+        to_date: Date filter (YYYY-MM-DD)
         max_pages: Maximum pages to scrape (defaults to config)
         consulting_only: Filter for consulting bids only
+        **kwargs: Additional options like date_filter_type ('start' or 'end')
     
     Returns:
         List of bid dictionaries
@@ -158,19 +163,19 @@ def scrape_bids(keywords="", from_date="", to_date="", max_pages=None, consultin
     retry_attempts = SCRAPING_CONFIG['retry_attempts']
     retry_backoff = SCRAPING_CONFIG['retry_backoff']
     
+    # Determine date filter type
+    date_filter_type = kwargs.get('date_filter_type', 'end')
 
     session = requests.Session()
     session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Referer": ALL_BIDS_URL,
         "Origin": BASE_URL,
         "X-Requested-With": "XMLHttpRequest"
     })
 
-    try:
-        csrf_token = get_csrf_token(session)
-    except Exception as e:
-        print(f"Error getting CSRF token: {e}")
+    csrf_token = get_csrf_token(session)
+    if not csrf_token:
         return []
 
     # Expand keywords
@@ -197,13 +202,16 @@ def scrape_bids(keywords="", from_date="", to_date="", max_pages=None, consultin
                     "bidStatusType": "ongoing_bids",
                     "byType": "all",
                     "highBidValue": "",
-                    "byEndDate": {
-                        "from": from_date, # Format: YYYY-MM-DD
-                        "to": to_date      # Format: YYYY-MM-DD
-                    },
                     "sort": "Bid-Number-Newest"  # Sort by bid number for consistent results
                 }
             }
+            
+            # Use server-side filter for end date if requested
+            if date_filter_type == 'end' and from_date and to_date:
+                payload['filter']['byEndDate'] = {
+                    "from": from_date,
+                    "to": to_date
+                }
             
             data = {
                 'payload': json.dumps(payload),
@@ -227,10 +235,19 @@ def scrape_bids(keywords="", from_date="", to_date="", max_pages=None, consultin
                         
                     docs = result.get('response', {}).get('response', {}).get('docs', [])
                     if not docs:
-                        # print(f"No docs found on page {page} for term '{term}'")
                         break
                         
                     for doc in docs:
+                        # Local start date filter
+                        if date_filter_type == 'start' and from_date:
+                            s_date_raw = doc.get('final_start_date_sort', [''])[0] if isinstance(doc.get('final_start_date_sort'), list) else doc.get('final_start_date_sort', '')
+                            # from_date is YYYY-MM-DD, s_date_raw is YYYY-MM-DDTHH:MM:SSZ
+                            if s_date_raw and s_date_raw < from_date:
+                                # Older than our window, can skip (but don't break yet if out of order)
+                                continue
+                            if to_date and s_date_raw > to_date + "T23:59:59Z":
+                                continue
+
                         b_id_raw = doc.get('b_id')
                         if isinstance(b_id_raw, list) and len(b_id_raw) > 0:
                             b_id = str(b_id_raw[0])
@@ -450,4 +467,3 @@ def extract_hyperlinks_from_pdf(pdf_path: str) -> List[str]:
         print(f"Error extracting links from PDF {pdf_path}: {e}")
     
     return list(set(links))  # Deduplicate
-

@@ -33,7 +33,8 @@ class UnifiedScraper:
         from_date: str = "",
         to_date: str = "",
         max_pages: int = None,
-        consulting_only: bool = True
+        consulting_only: bool = True,
+        **kwargs
     ) -> List[Dict[str, Any]]:
         """
         Scrape selected portals and return combined results.
@@ -64,7 +65,8 @@ class UnifiedScraper:
                     from_date=from_date,
                     to_date=to_date,
                     max_pages=max_pages,
-                    consulting_only=consulting_only
+                    consulting_only=consulting_only,
+                    **kwargs
                 )
                 
                 # Enrich GeM bids with source portal if missing
@@ -90,7 +92,8 @@ class UnifiedScraper:
                         portal_name, 
                         keywords, 
                         max_pages, 
-                        consulting_only
+                        consulting_only,
+                        **kwargs
                     ): portal_name 
                     for portal_name in nic_portals
                 }
@@ -112,7 +115,8 @@ class UnifiedScraper:
         portal_name: str,
         keywords: str,
         max_pages: int,
-        consulting_only: bool
+        consulting_only: bool,
+        **kwargs
     ) -> List[Dict[str, Any]]:
         """Helper to run a specific NIC scraper and convert results."""
         scraper = self.scrapers.get(portal_name)
@@ -127,7 +131,8 @@ class UnifiedScraper:
         # Scrape
         scraped_objects = scraper.scrape_bids(
             keywords=keywords,
-            max_pages=pages
+            max_pages=pages,
+            **kwargs
         )
         
         # Filter (keywords matching is already done in nic_scraper, but double check consulting)
