@@ -479,7 +479,7 @@ def is_admin() -> bool:
         return bool(user.get('is_admin', False))
     try:
         return bool(user['is_admin'])
-    except:
+    except (KeyError, TypeError, IndexError):
         return False
 
 

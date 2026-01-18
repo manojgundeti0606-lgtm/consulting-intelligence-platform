@@ -141,7 +141,7 @@ class CIPDatabase:
             for email in initial_emails:
                 try:
                     cursor.execute("INSERT INTO email_recipients (email, name) VALUES (?, ?)", (email, email.split('@')[0]))
-                except:
+                except sqlite3.IntegrityError:
                     pass
 
         

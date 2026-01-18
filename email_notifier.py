@@ -304,7 +304,7 @@ def generate_digest_email_html(bids_with_analysis: List[Dict]) -> str:
                 # Try parsing standard formats
                 dt = datetime.strptime(ed, "%d-%m-%Y %I:%M %p") # e.g. 29-12-2024 08:30 PM
                 deadlines.append(dt)
-            except:
+            except ValueError:
                 pass
     
     if deadlines:

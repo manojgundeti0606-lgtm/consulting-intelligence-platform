@@ -28,8 +28,8 @@ def get_team_emails():
             recipients = st.session_state.db.get_all_recipients()
             if recipients:
                 return [r['email'] for r in recipients]
-    except:
-        pass
+    except Exception:
+        pass  # Database not available or no recipients yet
     return TEAM_EMAILS_DEPRECATED
 
 def trigger_team_email(bids_list, source_name="Report"):
@@ -65,8 +65,8 @@ def trigger_team_email(bids_list, source_name="Report"):
                 cached = st.session_state.db.get_ai_analysis(bid['Bid Number'])
                 if cached:
                     full_analysis = cached
-            except:
-                pass
+            except Exception:
+                pass  # Could not fetch cached analysis
         
         if not full_analysis:
             full_analysis = {
@@ -832,7 +832,7 @@ if not is_logged_in():
                 authenticator = Authenticate(
                     secret_credentials_path='google_credentials.json',
                     cookie_name='cip_auth',
-                    cookie_key='cip_secret_key_12345',
+                    cookie_key=os.environ.get('CIP_SECRET_KEY', 'cip_secret_key_dev_only'),
                     redirect_uri='http://localhost:8518',
                 )
                 

@@ -41,10 +41,11 @@ def filter_new_bids(bids: List[Dict], db=None) -> Tuple[List[Dict], List[Dict]]:
     
     # Get all existing bid numbers from database
     try:
-        all_db_bids = db.get_recent_bids(days=365)  # Check last year
+        all_db_bids = db.get_all_bids(limit=1000)  # Get recent bids for deduplication
         existing_bid_numbers = {b.get('bid_number') or b.get('Bid Number') for b in all_db_bids}
-    except Exception:
-        pass
+    except (AttributeError, TypeError) as e:
+        # Log the specific error for debugging
+        print(f"Warning: Could not fetch existing bids for deduplication: {e}")
     
     new_bids = []
     existing_bids = []
