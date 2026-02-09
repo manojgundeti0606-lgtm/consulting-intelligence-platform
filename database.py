@@ -52,9 +52,10 @@ class CIPDatabase:
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        # Bids table
+        # Helper for serial/autoincrement
         id_col = "id SERIAL PRIMARY KEY" if self.db_type == 'postgres' else "id INTEGER PRIMARY KEY AUTOINCREMENT"
         
+        # 1. Bids table
         cursor.execute(f'''
             CREATE TABLE IF NOT EXISTS bids (
                 {id_col},
@@ -72,22 +73,36 @@ class CIPDatabase:
                 last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        conn.commit()
         
-        # Migration: Add source_portal column if it doesn't exist
-        try:
-            cursor.execute("ALTER TABLE bids ADD COLUMN source_portal TEXT DEFAULT 'gem'")
-        except sqlite3.OperationalError:
-            pass  # Column already exists
+        # Column Migrations
+        if self.db_type == 'postgres':
+            # Helper to add column if missing
+            def add_col_if_missing(table, col, definition):
+                cursor.execute(f"""
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = '{table}' AND column_name = '{col}'
+                """)
+                if not cursor.fetchone():
+                    cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col} {definition}")
+                    conn.commit()
+            
+            add_col_if_missing('bids', 'source_portal', "TEXT DEFAULT 'gem'")
+            add_col_if_missing('bids', 'location', "TEXT")
+        else:
+            try:
+                cursor.execute("ALTER TABLE bids ADD COLUMN source_portal TEXT DEFAULT 'gem'")
+            except sqlite3.OperationalError: pass
+            
+            try:
+                cursor.execute("ALTER TABLE bids ADD COLUMN location TEXT")
+            except sqlite3.OperationalError: pass
+            conn.commit()
         
-        try:
-            cursor.execute("ALTER TABLE bids ADD COLUMN location TEXT")
-        except sqlite3.OperationalError:
-            pass  # Column already exists
-        
-        # AI Analysis table
-        cursor.execute('''
+        # 2. AI Analysis table
+        cursor.execute(f'''
             CREATE TABLE IF NOT EXISTS ai_analysis (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                {id_col},
                 bid_number TEXT NOT NULL,
                 cfs_score INTEGER,
                 cfs_verdict TEXT,
@@ -99,40 +114,42 @@ class CIPDatabase:
                 FOREIGN KEY (bid_number) REFERENCES bids(bid_number)
             )
         ''')
+        conn.commit()
         
-        # Watchlist table
-        cursor.execute('''
+        # 3. Watchlist table
+        cursor.execute(f'''
             CREATE TABLE IF NOT EXISTS watchlist (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                {id_col},
                 bid_number TEXT UNIQUE NOT NULL,
                 added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_checked TIMESTAMP,
                 FOREIGN KEY (bid_number) REFERENCES bids(bid_number)
             )
         ''')
+        conn.commit()
         
-        # Change log table
-        cursor.execute('''
+        # 4. Change log table
+        cursor.execute(f'''
             CREATE TABLE IF NOT EXISTS change_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                {id_col},
                 bid_number TEXT NOT NULL,
-                change_type TEXT,
-                old_value TEXT,
-                new_value TEXT,
+                change_type TEXT, old_value TEXT, new_value TEXT,
                 detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (bid_number) REFERENCES bids(bid_number)
             )
         ''')
+        conn.commit()
         
-        # Email Recipients table
-        cursor.execute('''
+        # 5. Email Recipients table
+        cursor.execute(f'''
             CREATE TABLE IF NOT EXISTS email_recipients (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                {id_col},
                 email TEXT UNIQUE NOT NULL,
                 name TEXT,
                 added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        conn.commit()
 
         # Seed initial emails if table is empty
         cursor.execute("SELECT COUNT(*) FROM email_recipients")
@@ -140,12 +157,12 @@ class CIPDatabase:
             initial_emails = NOTIFICATION_CONFIG.get('team_emails', [])
             for email in initial_emails:
                 try:
-                    cursor.execute("INSERT INTO email_recipients (email, name) VALUES (?, ?)", (email, email.split('@')[0]))
-                except sqlite3.IntegrityError:
-                    pass
-
+                    p = "%s" if self.db_type == 'postgres' else "?"
+                    cursor.execute(f"INSERT INTO email_recipients (email, name) VALUES ({p}, {p})", (email, email.split('@')[0]))
+                    conn.commit()
+                except (sqlite3.IntegrityError, psycopg2.Error):
+                    conn.rollback()
         
-        conn.commit()
         conn.close()
     
     def save_bid(self, bid_data: Dict):
@@ -342,21 +359,26 @@ class CIPDatabase:
     def get_changes(self, bid_number: str = None, limit=50) -> List[Dict]:
         """Get change log"""
         conn = self.get_connection()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        placeholder = "%s" if self.db_type == 'postgres' else "?"
+        
+        if self.db_type == 'postgres':
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
         
         if bid_number:
-            cursor.execute('''
+            cursor.execute(f'''
                 SELECT * FROM change_log 
-                WHERE bid_number = ? 
+                WHERE bid_number = {placeholder} 
                 ORDER BY detected_at DESC 
-                LIMIT ?
+                LIMIT {placeholder}
             ''', (bid_number, limit))
         else:
-            cursor.execute('''
+            cursor.execute(f'''
                 SELECT * FROM change_log 
                 ORDER BY detected_at DESC 
-                LIMIT ?
+                LIMIT {placeholder}
             ''', (limit,))
         
         rows = cursor.fetchall()
@@ -367,15 +389,20 @@ class CIPDatabase:
     def get_bid_with_analysis(self, bid_number: str) -> Optional[Dict]:
         """Get bid data with AI analysis"""
         conn = self.get_connection()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        placeholder = "%s" if self.db_type == 'postgres' else "?"
         
-        cursor.execute('''
+        if self.db_type == 'postgres':
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+        
+        cursor.execute(f'''
             SELECT b.*, a.cfs_score, a.cfs_verdict, a.cfs_reasoning,
                    a.go_no_go_recommendation, a.exec_summary_json, a.sow_summary, a.analyzed_at
             FROM bids b
             LEFT JOIN ai_analysis a ON b.bid_number = a.bid_number
-            WHERE b.bid_number = ?
+            WHERE b.bid_number = {placeholder}
             ORDER BY a.analyzed_at DESC
             LIMIT 1
         ''', (bid_number,))
@@ -394,16 +421,21 @@ class CIPDatabase:
     def get_recent_bids_with_analysis(self, limit=50) -> List[Dict]:
         """Get recent bids with AI analysis included"""
         conn = self.get_connection()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        placeholder = "%s" if self.db_type == 'postgres' else "?"
         
-        cursor.execute('''
+        if self.db_type == 'postgres':
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+        
+        cursor.execute(f'''
             SELECT b.*, a.cfs_score, a.cfs_verdict, a.cfs_reasoning,
                    a.go_no_go_recommendation, a.exec_summary_json, a.sow_summary, a.analyzed_at
             FROM bids b
             LEFT JOIN ai_analysis a ON b.bid_number = a.bid_number
             ORDER BY b.last_updated DESC
-            LIMIT ?
+            LIMIT {placeholder}
         ''', (limit,))
         
         rows = cursor.fetchall()
@@ -432,19 +464,24 @@ class CIPDatabase:
     def get_bids_in_period(self, days: int) -> List[Dict]:
         """Get bids analyzed in the last N days"""
         conn = self.get_connection()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        placeholder = "%s" if self.db_type == 'postgres' else "?"
+        
+        if self.db_type == 'postgres':
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
         
         # calculate date threshold
         from datetime import datetime, timedelta
         threshold_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
         
-        cursor.execute('''
+        cursor.execute(f'''
             SELECT b.*, a.cfs_score, a.cfs_verdict, a.cfs_reasoning,
                    a.go_no_go_recommendation, a.exec_summary_json, a.sow_summary, a.analyzed_at
             FROM bids b
             LEFT JOIN ai_analysis a ON b.bid_number = a.bid_number
-            WHERE a.analyzed_at >= ?
+            WHERE a.analyzed_at >= {placeholder}
             ORDER BY a.analyzed_at DESC
         ''', (threshold_date,))
         
@@ -509,8 +546,12 @@ class CIPDatabase:
     def get_all_recipients(self) -> List[Dict]:
         """Get all email recipients"""
         conn = self.get_connection()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        
+        if self.db_type == 'postgres':
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+        else:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
         
         cursor.execute('SELECT * FROM email_recipients ORDER BY name')
         rows = cursor.fetchall()

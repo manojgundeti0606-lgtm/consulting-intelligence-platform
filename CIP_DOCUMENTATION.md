@@ -24,7 +24,7 @@ The **Consulting Intelligence Platform (CIP)** is an AI-powered bid discovery an
 The main interface for discovering and analyzing bids.
 
 | Feature | Description |
-|---------|-------------|
+| --------- | ------------- |
 | **Keyword Search** | Search by Items, Ministry, Department, or any free text |
 | **Semantic Expansion** | Automatically expands keywords (e.g., "ERP" → "SAP", "Oracle", "Enterprise Resource Planning") |
 | **Date Filtering** | Filter by bid end date range |
@@ -36,7 +36,7 @@ The main interface for discovering and analyzing bids.
 Every scraped bid can be analyzed by AI to provide:
 
 | Component | Description |
-|-----------|-------------|
+| ----------- | ------------- |
 | **CFS Score** | Consulting Fit Score (0-100) measuring alignment with firm capabilities |
 | **Go/No-Go Matrix** | Traffic light indicators (🟢/🟡/🔴) for Eligibility, Timeline, Technical Fit |
 | **Executive Summary** | "The Ask", Key Deliverables, Evaluation Criteria |
@@ -53,7 +53,7 @@ Every scraped bid can be analyzed by AI to provide:
 An intelligent document reader that extracts and summarizes the Scope of Work from bid PDFs.
 
 | Step | Action |
-|------|--------|
+| ------ | -------- |
 | **PDF Scan** | Scans first 30 pages for "Scope of Work" section headers |
 | **Boundary Detection** | Uses AI to identify SOW start/end pages |
 | **Text Extraction** | Extracts text from identified range |
@@ -64,7 +64,7 @@ An intelligent document reader that extracts and summarizes the Scope of Work fr
 Monitor important bids for changes.
 
 | Feature | Description |
-|---------|-------------|
+| --------- | ------------- |
 | **Add/Remove** | One-click add from dashboard or remove from watchlist page |
 | **Update Checking** | "Check for Updates" scans watched bids for date changes, corrigenda |
 | **Change Logging** | All detected changes logged to database with timestamps |
@@ -74,7 +74,7 @@ Monitor important bids for changes.
 View historical bid data from the database.
 
 | Filter | Options |
-|--------|---------|
+| -------- | --------- |
 | **Time Range** | Last 7, 15, 30, 90, 180, 365 days |
 | **Run Now** | Manual trigger for fresh scrape |
 | **View Mode** | Cards or Table |
@@ -84,7 +84,7 @@ View historical bid data from the database.
 Statistical overview of scraped data.
 
 | Metric | Description |
-|--------|-------------|
+| -------- | ------------- |
 | **Total Bids Scraped** | Count of all bids in database |
 | **High-Fit Opportunities** | Bids with CFS ≥ 80 |
 | **Pending Analysis** | Bids not yet analyzed by AI |
@@ -95,7 +95,7 @@ Statistical overview of scraped data.
 Automated, timed execution of tasks.
 
 | Job | Schedule |
-|-----|----------|
+| ----- | ---------- |
 | **Daily Intelligence Run** | 08:00 AM daily (configurable) |
 | **Watchlist Check** | Every 6 hours |
 
@@ -106,7 +106,7 @@ Automated, timed execution of tasks.
 Export scraped data in multiple formats.
 
 | Format | Contents |
-|--------|----------|
+| -------- | ---------- |
 | **CSV** | Bid Number, Items, Department, Dates, Links |
 | **JSON** | Full data including CFS scores, AI reasoning, executive summaries |
 
@@ -117,7 +117,7 @@ Export scraped data in multiple formats.
 Bids are classified into 5 categories:
 
 | Category | Examples |
-|----------|----------|
+| ---------- | ---------- |
 | **Strategy & Policy** | DPR, Feasibility Study, Vision Document, Roadmap |
 | **Tech & Digital** | ERP, Cloud Migration, AI/ML, Cybersecurity, E-Governance |
 | **PMU / PMC** | Project Management Unit, Implementation Support, Manpower |
@@ -131,7 +131,7 @@ Bids are classified into 5 categories:
 All settings are centralized in `config.py`:
 
 | Config Block | Purpose |
-|--------------|---------|
+| -------------- | --------- |
 | `CONSULTING_TAXONOMY` | Keywords and filters for each consulting category |
 | `FIRM_PROFILE` | Expertise areas, industries, tech stack (configured for EY) |
 | `SCRAPING_CONFIG` | Max pages, rate limits, retry logic |
@@ -177,7 +177,7 @@ gem_scraper/
 ## 📡 API & Data Sources
 
 | Source | Endpoint |
-|--------|----------|
+| -------- | ---------- |
 | **GeM Portal** | `https://bidplus.gem.gov.in/all-bids-data` (POST) |
 | **AI Model** | `models/gemini-2.5-flash-preview-05-20` via Google GenAI |
 
@@ -224,7 +224,7 @@ flowchart TD
 ### Data Flow Steps
 
 | Step | Component | Input | Output |
-|------|-----------|-------|--------|
+| ------ | ----------- | ------- | -------- |
 | 1 | `expand_keywords()` | User keyword (e.g. "ERP") | Expanded list ["ERP", "SAP", "Oracle", ...] |
 | 2 | `scrape_bids()` | Keywords, dates, max_pages | List of raw bid dictionaries |
 | 3 | `is_consulting_bid()` | Single bid dict | (True/False, Category name) |
@@ -241,7 +241,7 @@ flowchart TD
 ### gem_scraper.py — Core Scraping
 
 | Function | Purpose | Returns |
-|----------|---------|---------|
+| ---------- | --------- | --------- |
 | `get_csrf_token(session)` | Extracts CSRF token from GeM page | `str` token |
 | `expand_keywords(keyword)` | Expands search term with synonyms | `List[str]` keywords |
 | `is_consulting_bid(bid_data)` | Classifies bid using taxonomy | `Tuple[bool, str]` (is_consulting, category) |
@@ -253,7 +253,7 @@ flowchart TD
 ### ai_analyzer.py — AI Integration
 
 | Function | Purpose | Returns |
-|----------|---------|---------|
+| ---------- | --------- | --------- |
 | `GeminiAnalyzer._call_gemini(prompt)` | Calls Gemini API with retry | `str` response text |
 | `calculate_consulting_fit_score(bid_data, firm_profile)` | Computes CFS score | `Dict{score, verdict, reasoning}` |
 | `generate_go_no_go_matrix(bid_data, sow_text, firm_profile)` | Evaluates bid criteria | `Dict{eligibility, timeline, technical_fit, ...}` |
@@ -263,7 +263,7 @@ flowchart TD
 ### virtual_agent.py — PDF Reader Agent
 
 | Method | Purpose | Returns |
-|--------|---------|---------|
+| -------- | --------- | --------- |
 | `BidReaderAgent.__init__(pdf_path)` | Initializes agent with PDF | Agent instance |
 | `find_sow_boundary()` | Scans for SOW section boundaries | `Tuple[int, int]` (start_page, end_page) |
 | `_is_sow_start(text)` | AI check if text starts SOW | `bool` |
@@ -274,7 +274,7 @@ flowchart TD
 ### database.py — Data Storage
 
 | Method | Purpose | Returns |
-|--------|---------|---------|
+| -------- | --------- | --------- |
 | `CIPDatabase.init_database()` | Creates tables if not exist | `None` |
 | `save_bid(bid_data)` | Upserts bid record | `None` |
 | `save_ai_analysis(analysis_data)` | Stores AI results linked to bid | `None` |
@@ -383,7 +383,7 @@ flowchart TD
 ### Tables
 
 | Table | Purpose |
-|-------|---------|
+| ------- | --------- |
 | `bids` | Core bid metadata (number, items, dates, links) |
 | `ai_analysis` | CFS score, Go/No-Go, summaries linked to bids |
 | `watchlist` | Bid numbers being monitored |

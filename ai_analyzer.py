@@ -602,15 +602,31 @@ def analyze_tender_ad_intelligence(bid_data: Dict, sow_text: str = "", pdf_path:
         # Step 5: Generate tender summary  
         tender_summary = generate_tender_summary(tender_data, ad_analysis)
         
-        # Step 6: Run AI analysis for additional insights
+        # Step 6: Run AI analysis for additional insights (using new trigger logic)
         ai_insights = None
-        if ad_analysis.get('a_d_relevance_score', 0) >= 50:
+        should_run_ai = ad_analysis.get('ai_trigger_status', False)
+        trigger_reason = ad_analysis.get('ai_trigger_reason', 'Unknown')
+        logger.info(f"AI Trigger Decision: {should_run_ai} - {trigger_reason}")
+        
+        if should_run_ai:
             cfs = calculate_consulting_fit_score(bid_data)
             ai_insights = {
                 "cfs_score": cfs.get('score', 0),
                 "cfs_verdict": cfs.get('verdict', 'N/A'),
                 "cfs_reasoning": cfs.get('reasoning', '')
             }
+        
+        # Step 7: Run Intent-Driven Analysis (v4.1) for Partner Persona insights
+        intent_analysis = None
+        if should_run_ai:
+            try:
+                from intent_scorer import analyze_bid_intent
+                intent_analysis = analyze_bid_intent(bid_data)
+                logger.info(f"Intent Analysis: {intent_analysis.get('primary_archetype')} - {intent_analysis.get('priority_band')}")
+            except ImportError as e:
+                logger.warning(f"Intent scorer not available: {e}")
+            except Exception as e:
+                logger.error(f"Intent analysis failed: {e}")
         
         # Combine all results
         result = {
@@ -648,7 +664,11 @@ def analyze_tender_ad_intelligence(bid_data: Dict, sow_text: str = "", pdf_path:
             
             # Metadata
             "sow_extracted": bool(final_sow_text),
-            "analyzed_at": time.strftime('%Y-%m-%d %H:%M:%S')
+            "analyzed_at": time.strftime('%Y-%m-%d %H:%M:%S'),
+            
+            # Intent-Driven Analysis (v4.1)
+            "intent_analysis": intent_analysis,
+            "ai_trigger_reason": trigger_reason
         }
         
         logger.info(f"A&D Analysis complete: Score={result['a_d_relevance_score']}, Rec={result['recommendation']}")

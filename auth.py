@@ -94,22 +94,31 @@ class AuthManager:
                 last_login TIMESTAMP
             )
         ''')
+        conn.commit()
         
         # Add new columns if they don't exist (for migration)
-        try:
-            cursor.execute("ALTER TABLE users ADD COLUMN auth_method TEXT DEFAULT 'local'")
-        except sqlite3.OperationalError:
-            pass  # Column already exists
-        try:
-            cursor.execute("ALTER TABLE users ADD COLUMN google_id TEXT")
-        except sqlite3.OperationalError:
-            pass  # Column already exists
-        try:
-            cursor.execute("ALTER TABLE users ADD COLUMN profile_picture TEXT")
-        except sqlite3.OperationalError:
-            pass  # Column already exists
+        if self.db_type == 'postgres':
+            def add_col_if_missing(table, col, definition):
+                cursor.execute(f"SELECT 1 FROM information_schema.columns WHERE table_name = '{table}' AND column_name = '{col}'")
+                if not cursor.fetchone():
+                    cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col} {definition}")
+                    conn.commit()
+            
+            add_col_if_missing('users', 'auth_method', "TEXT DEFAULT 'local'")
+            add_col_if_missing('users', 'google_id', "TEXT")
+            add_col_if_missing('users', 'profile_picture', "TEXT")
+        else:
+            try:
+                cursor.execute("ALTER TABLE users ADD COLUMN auth_method TEXT DEFAULT 'local'")
+            except sqlite3.OperationalError: pass
+            try:
+                cursor.execute("ALTER TABLE users ADD COLUMN google_id TEXT")
+            except sqlite3.OperationalError: pass
+            try:
+                cursor.execute("ALTER TABLE users ADD COLUMN profile_picture TEXT")
+            except sqlite3.OperationalError: pass
+            conn.commit()
         
-        conn.commit()
         conn.close()
     
     def login_with_google(self, google_user_info: Dict) -> Dict:
@@ -147,10 +156,16 @@ class AuthManager:
                 return {"success": False, "error": "Account is deactivated"}
             
             # Update google_id and last login
-            cursor.execute('''
-                UPDATE users SET google_id = ?, profile_picture = ?, last_login = ?, auth_method = COALESCE(?, auth_method)
-                WHERE id = ?
-            ''', (google_id, picture, datetime.now().isoformat(), 'google' if not auth_method else None, user_id))
+            if self.db_type == 'postgres':
+                cursor.execute('''
+                    UPDATE users SET google_id = %s, profile_picture = %s, last_login = %s, auth_method = COALESCE(%s, auth_method)
+                    WHERE id = %s
+                ''', (google_id, picture, datetime.now().isoformat(), 'google' if not auth_method else None, user_id))
+            else:
+                cursor.execute('''
+                    UPDATE users SET google_id = ?, profile_picture = ?, last_login = ?, auth_method = COALESCE(?, auth_method)
+                    WHERE id = ?
+                ''', (google_id, picture, datetime.now().isoformat(), 'google' if not auth_method else None, user_id))
             conn.commit()
             conn.close()
             
@@ -172,7 +187,6 @@ class AuthManager:
             base_username = username
             counter = 1
             while True:
-                cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
                 cursor.execute(f"SELECT id FROM users WHERE username = {placeholder}", (username,))
                 if not cursor.fetchone():
                     break
@@ -391,11 +405,12 @@ class AuthManager:
     
     def toggle_user_active(self, user_id: int) -> bool:
         """Activate/deactivate user account"""
+        placeholder = "%s" if self.db_type == 'postgres' else "?"
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        cursor.execute('''
-            UPDATE users SET is_active = NOT is_active WHERE id = ?
+        cursor.execute(f'''
+            UPDATE users SET is_active = NOT is_active WHERE id = {placeholder}
         ''', (user_id,))
         
         conn.commit()

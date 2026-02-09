@@ -101,6 +101,43 @@ def expand_keywords(keyword: str) -> List[str]:
     return list(set(keywords))  # Remove duplicates
 
 
+def sanitize_keyword(keyword: str) -> str:
+    """
+    Sanitize keyword for GeM API to prevent 404 errors.
+    
+    Removes or replaces special characters that cause API failures:
+    - Forward slashes (/) - causes URL path issues
+    - Hyphens in e-words (e-governance) - causes parsing issues
+    - Other special characters
+    
+    Args:
+        keyword: Raw search keyword
+    
+    Returns:
+        Sanitized keyword safe for API calls
+    """
+    if not keyword:
+        return ""
+    
+    # Replace problematic patterns
+    sanitized = keyword
+    
+    # Replace / with space (e.g., "ai/ml" -> "ai ml")
+    sanitized = sanitized.replace('/', ' ')
+    
+    # Replace e- prefix with full word (e.g., "e-governance" -> "egovernance")
+    sanitized = re.sub(r'\be-', 'e', sanitized)
+    
+    # Remove other special characters that might cause issues
+    # Keep alphanumeric, spaces, and basic punctuation
+    sanitized = re.sub(r'[^\w\s\-\.]', ' ', sanitized)
+    
+    # Normalize multiple spaces
+    sanitized = re.sub(r'\s+', ' ', sanitized).strip()
+    
+    return sanitized
+
+
 def is_consulting_bid(bid_data: Dict) -> Tuple[bool, Optional[str]]:
     """
     Determines if a bid is consulting-related using taxonomy
@@ -180,7 +217,21 @@ def scrape_bids(keywords="", from_date="", to_date="", max_pages=None, consultin
         return []
 
     # Expand keywords
-    search_terms = expand_keywords(keywords) if keywords else [""]
+    if isinstance(keywords, list):
+        search_terms = []
+        for k in keywords:
+            if k:
+                search_terms.extend(expand_keywords(str(k)))
+        search_terms = list(set(search_terms)) # Deduplicate
+        if not search_terms:
+            search_terms = [""]
+    else:
+        search_terms = expand_keywords(keywords) if keywords else [""]
+    # Sanitize all search terms
+    search_terms = [sanitize_keyword(t) for t in search_terms if sanitize_keyword(t)]
+    if not search_terms:
+        search_terms = [""]
+    
     print(f"Searching for terms: {search_terms}")
 
     all_bids_dict = {} # Use dict to deduplicate by Bid Number
@@ -203,7 +254,7 @@ def scrape_bids(keywords="", from_date="", to_date="", max_pages=None, consultin
                     "bidStatusType": "ongoing_bids",
                     "byType": "all",
                     "highBidValue": "",
-                    "sort": "Bid-Number-Newest"  # Sort by bid number for consistent results
+                    "sort": "Bid-Start-Date-Latest"  # Sort by Start Date to get newest published bids
                 }
             }
             
@@ -408,11 +459,43 @@ def download_document(url, save_dir="downloads", bid_data=None):
     save_path = os.path.join(final_save_dir, filename)
     
     try:
-        response = requests.get(url, stream=True, timeout=60)
+        # Use headers that mimic a real browser
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/pdf,*/*',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
+        
+        response = requests.get(url, stream=True, timeout=60, headers=headers)
         response.raise_for_status()
+        
+        # Check content-type header
+        content_type = response.headers.get('content-type', '').lower()
+        if 'html' in content_type:
+            print(f"Warning: URL returned HTML instead of PDF (likely login page)")
+            # Still download for debugging, but warn
+        
         with open(save_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
+        
+        # Validate the downloaded file is actually a PDF
+        with open(save_path, 'rb') as f:
+            header = f.read(10)
+            if not header.startswith(b'%PDF-'):
+                # Check if it's HTML
+                try:
+                    text = header.decode('utf-8', errors='ignore').lower()
+                    if '<html' in text or '<!doctype' in text or '<head' in text:
+                        print(f"Downloaded file is HTML, not PDF. Portal likely requires login.")
+                        # Keep the file for debugging but return None
+                        os.rename(save_path, save_path + ".html")
+                        return None
+                except:
+                    pass
+                print(f"Downloaded file is not a valid PDF (header: {header[:10]})")
+                return None
+        
         return save_path
     except Exception as e:
         print(f"Error downloading {url}: {e}")

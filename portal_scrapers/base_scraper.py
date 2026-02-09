@@ -23,6 +23,14 @@ class PortalType(Enum):
     GEM = "gem"
     CPPP = "cppp"
     DPPP = "dppp"
+    # Phase 2 DPSU Portals
+    EPROCURE = "eprocure"
+    GRSE = "grse"
+    GOA_SHIPYARD = "goa_shipyard"
+    DDP = "ddp"
+    BDL = "bdl"
+    HAL = "hal"
+    BHEL = "bhel"
 
 
 @dataclass

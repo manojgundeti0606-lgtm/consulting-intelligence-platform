@@ -221,8 +221,8 @@ def generate_full_bid_section_html(item: Dict, index: int) -> str:
     Generate inline full analysis HTML for a single bid to embed in email.
     Matches user's requested "Dark Header" card design.
     """
-    bid = item.get('bid', {})
-    sow_summary = item.get('sow_summary', 'Not specified')
+    bid = item.get('bid') or {}
+    sow_summary = item.get('sow_summary') or 'Not specified'
     
     # Basic bid info
     bid_num = bid.get('Bid Number', 'N/A')
@@ -277,7 +277,7 @@ def generate_full_bid_section_html(item: Dict, index: int) -> str:
             
             <!-- SOW Summary -->
             <div style="margin-bottom: 15px;">
-                <strong>SOW summary:</strong> {sow_summary[:300]}{'...' if len(sow_summary) > 300 else ''}
+                <strong>SOW summary:</strong> {sow_summary[:300] if sow_summary else 'Not specified'}{'...' if sow_summary and len(sow_summary) > 300 else ''}
             </div>
             
             <!-- Button -->
@@ -298,7 +298,8 @@ def generate_digest_email_html(bids_with_analysis: List[Dict]) -> str:
     nearest_deadline = "N/A"
     deadlines = []
     for item in bids_with_analysis:
-        ed = item['bid'].get('End Date')
+        bid = item.get('bid') or {}
+        ed = bid.get('End Date')
         if ed:
             try:
                 # Try parsing standard formats

@@ -3,44 +3,48 @@
 
 steps:
   # Build the container image
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/cip-app:$COMMIT_SHA', '.']
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["build", "-t", "gcr.io/$PROJECT_ID/cip-app:$COMMIT_SHA", "."]
 
   # Push the container image to Container Registry
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/cip-app:$COMMIT_SHA']
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["push", "gcr.io/$PROJECT_ID/cip-app:$COMMIT_SHA"]
 
   # Deploy to Cloud Run
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
     entrypoint: gcloud
     args:
-      - 'run'
-      - 'deploy'
-      - 'cip-app'
-      - '--image'
-      - 'gcr.io/$PROJECT_ID/cip-app:$COMMIT_SHA'
-      - '--region'
-      - 'us-central1'
-      - '--platform'
-      - 'managed'
-      - '--allow-unauthenticated'
-      - '--memory'
-      - '1Gi'
-      - '--cpu'
-      - '1'
-      - '--timeout'
-      - '300'
-      - '--set-env-vars'
-      - 'STREAMLIT_SERVER_PORT=8080,STREAMLIT_SERVER_ADDRESS=0.0.0.0,STREAMLIT_SERVER_HEADLESS=true'
+      - "run"
+      - "deploy"
+      - "cip-app"
+      - "--image"
+      - "gcr.io/$PROJECT_ID/cip-app:$COMMIT_SHA"
+      - "--region"
+      - "us-central1"
+      - "--platform"
+      - "managed"
+      - "--allow-unauthenticated"
+      - "--memory"
+      - "2Gi"
+      - "--cpu"
+      - "1"
+      - "--timeout"
+      - "300"
+      - "--min-instances"
+      - "0"
+      - "--max-instances"
+      - "10"
+      - "--set-env-vars"
+      - "STREAMLIT_SERVER_PORT=8080,STREAMLIT_SERVER_ADDRESS=0.0.0.0,STREAMLIT_SERVER_HEADLESS=true"
 
 # Store images in Container Registry
 images:
-  - 'gcr.io/$PROJECT_ID/cip-app:$COMMIT_SHA'
+  - "gcr.io/$PROJECT_ID/cip-app:$COMMIT_SHA"
 
 # Build timeout (15 minutes)
-timeout: '900s'
+timeout: "900s"
 
 # Optional: Add substitutions for environment-specific values
 substitutions:
-  _REGION: 'us-central1'
-  _SERVICE_NAME: 'cip-app'
+  _REGION: "us-central1"
+  _SERVICE_NAME: "cip-app"

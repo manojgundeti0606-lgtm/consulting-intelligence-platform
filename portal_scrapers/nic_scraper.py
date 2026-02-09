@@ -59,6 +59,8 @@ class NICPortalScraper(BaseScraper):
         names = {
             PortalType.CPPP: "Central Public Procurement Portal (CPPP)",
             PortalType.DPPP: "Defence Procurement Portal (DPPP)",
+            PortalType.EPROCURE: "eProcure Government of India",
+            PortalType.GRSE: "Garden Reach Shipbuilders & Engineers (GRSE)",
         }
         return names.get(self.portal_type, "NIC eProcurement Portal")
     
@@ -188,22 +190,41 @@ class NICPortalScraper(BaseScraper):
                     
                     soup = BeautifulSoup(response.text, 'html.parser')
                     
-                    # Find tender table specifically by ID
+                    # Find tender table - try multiple selectors
                     table = soup.find('table', id='table')
                     if not table:
-                        # Fallback to class if ID is missing (unlikely for NIC)
                         table = soup.find('table', class_='list_table')
+                    if not table:
+                        # Try to find any table with tender data
+                        tables = soup.find_all('table')
+                        for t in tables:
+                            if t.find('tr') and len(t.find_all('tr')) > 1:
+                                # Check if this table has tender-like content
+                                text = t.get_text().lower()
+                                if 'tender' in text or 'closing' in text or 'organisation' in text:
+                                    table = t
+                                    break
                     
                     if table:
                         rows = table.find_all('tr')
+                        header_found = False
                         
-                        for row in rows: 
+                        for row in rows:
                             cells = row.find_all(['td', 'th'])
-                            # Basic validation: ensure it's a data row and matches column count
-                            if len(cells) >= 5 and not any(h in row.text for h in ['S.No', 'Organisation Chain']):
+                            
+                            # Skip header rows (contain 'S.No' or 'Organisation')
+                            row_text = row.get_text().lower()
+                            if 's.no' in row_text or 'organisation chain' in row_text:
+                                header_found = True
+                                continue
+                            
+                            # Only process rows after header with enough cells
+                            if len(cells) >= 5:
                                 bid = self._parse_tender_row(row, cells)
                                 if bid:
                                     all_bids.append(bid)
+                    else:
+                        self.logger.warning(f"No tender table found on page {page}")
                     
                     # Check for next page link specifically by ID 'linkFwd'
                     next_link = soup.find('a', id='linkFwd')
@@ -218,15 +239,25 @@ class NICPortalScraper(BaseScraper):
                     self.logger.error(f"Error fetching page {page}: {e}")
                     break
             
-            # Apply keyword filter
+            # Apply keyword filter only if keywords are provided and not empty
             if keywords:
-                keywords_lower = keywords.lower()
-                all_bids = [
-                    b for b in all_bids 
-                    if keywords_lower in b.title.lower() or keywords_lower in b.department.lower()
-                ]
+                keywords_list = keywords if isinstance(keywords, list) else [keywords]
+                keywords_lower = [k.lower().strip() for k in keywords_list if k and k.strip()]
+                
+                # Only filter if we have actual keywords (not just empty strings)
+                if keywords_lower:
+                    filtered_bids = []
+                    for b in all_bids:
+                        bid_text = f"{b.title} {b.department}".lower()
+                        if any(k in bid_text for k in keywords_lower):
+                            filtered_bids.append(b)
+                    # Only apply filter if it doesn't eliminate all bids
+                    if filtered_bids:
+                        all_bids = filtered_bids
+                    else:
+                        self.logger.info(f"Keyword filter would eliminate all bids, keeping all {len(all_bids)}")
             
-            # Apply category filter
+            # Apply category filter if requested
             if categories:
                 all_bids = self.filter_by_category(all_bids, categories)
             
@@ -271,6 +302,43 @@ class DPPPScraper(NICPortalScraper):
         super().__init__(
             portal_type=PortalType.DPPP,
             base_url="https://defproc.gov.in/nicgep",
+            app_path="/app"
+        )
+
+
+class EProcureScraper(NICPortalScraper):
+    """
+    Scraper for eProcure Government Portal.
+    
+    URL: https://eprocure.gov.in/eprocure/app
+    
+    This portal uses the same NIC GEP framework as CPPP but with 
+    different URL structure. It provides access to tenders from
+    various central government organizations.
+    """
+    
+    def __init__(self):
+        super().__init__(
+            portal_type=PortalType.EPROCURE,
+            base_url="https://eprocure.gov.in/eprocure",
+            app_path="/app"
+        )
+
+
+class GRSEScraper(NICPortalScraper):
+    """
+    Scraper for Garden Reach Shipbuilders & Engineers (GRSE) Portal.
+    
+    URL: https://eprocuregrse.co.in/nicgep/app
+    
+    This portal uses the NIC GEP framework specifically for GRSE tenders.
+    It hosts tenders for shipbuilding and related defence contracts.
+    """
+    
+    def __init__(self):
+        super().__init__(
+            portal_type=PortalType.GRSE,
+            base_url="https://eprocuregrse.co.in/nicgep",
             app_path="/app"
         )
 

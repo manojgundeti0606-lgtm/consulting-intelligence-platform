@@ -12,7 +12,7 @@ from portal_scrapers import UnifiedScraper, PortalType
 from ai_analyzer import analyze_bid_complete
 from database import CIPDatabase
 from agent_scheduler import CIPAgent
-from config import FIRM_PROFILE, NOTIFICATION_CONFIG, CONSULTING_TAXONOMY, KEYWORD_EXPANSIONS, SCRAPING_CONFIG, ALL_DEFENCE_ORGANIZATIONS
+from config import FIRM_PROFILE, NOTIFICATION_CONFIG, CONSULTING_TAXONOMY, KEYWORD_EXPANSIONS, SCRAPING_CONFIG, ALL_DEFENCE_ORGANIZATIONS, DEFENCE_ORG_KEYWORDS
 from virtual_agent import BidReaderAgent
 from auth import AuthManager, init_session, is_logged_in, is_admin, get_current_user, login_user, logout_user
 from email_notifier import send_email_digest
@@ -48,7 +48,7 @@ def trigger_team_email(bids_list, source_name="Report"):
     for bid in bids_list:
         # Reconstruct analysis dict from flat fields if present
         cfs = {
-            'score': bid.get('CFS Score', 0),
+            'score': bid.get('CFS Score') or 0,
             'verdict': bid.get('Verdict', 'N/A'),
             'reasoning': bid.get('Reasoning', 'N/A') # Assuming Reasoning might be flattened
         }
@@ -60,9 +60,10 @@ def trigger_team_email(bids_list, source_name="Report"):
         
         # Try to get full details from DB if possible for better report
         full_analysis = {}
+        cached = None  # Initialize here so it's accessible later
         if 'Bid Number' in bid:
             try:
-                cached = st.session_state.db.get_ai_analysis(bid['Bid Number'])
+                cached = st.session_state.db.get_bid_with_analysis(bid['Bid Number'])
                 if cached:
                     full_analysis = cached
             except Exception:
@@ -75,10 +76,17 @@ def trigger_team_email(bids_list, source_name="Report"):
                 'executive_summary': bid.get('executive_summary', {})
             }
 
+        # Get sow_summary from cached analysis (DB) or from bid
+        sow_summary = ''
+        if cached:
+            sow_summary = cached.get('sow_summary') or bid.get('sow_summary', '')
+        else:
+            sow_summary = bid.get('sow_summary', '')
+
         adapted_bids.append({
             'bid': bid,
             'analysis': full_analysis,
-            'sow_summary': bid.get('sow_summary', '')
+            'sow_summary': sow_summary
         })
 
     recipients = get_team_emails()
@@ -493,14 +501,54 @@ def run_and_display_analysis(bid, key_suffix):
         with st.container():
             with st.spinner("🔄 Running comprehensive analysis..."):
                 doc_link = bid.get('Document Link') or bid.get('document_link')
+                bid_num = bid.get('Bid Number') or bid.get('bid_number')
                 
                 # Progress display
                 progress_container = st.empty()
-                progress_container.info("📥 Step 1/3: Downloading document...")
-                doc_path = download_document(doc_link, bid_data=bid)
+                doc_path = None
+                
+                # FIRST check for manual upload in session state
+                upload_key = f"manual_pdf_{bid_num}"
+                if upload_key in st.session_state and st.session_state[upload_key] is not None:
+                    # Use the manually uploaded file
+                    import tempfile
+                    uploaded_file = st.session_state[upload_key]
+                    temp_path = os.path.join(tempfile.gettempdir(), f"{bid_num}_manual.pdf")
+                    with open(temp_path, 'wb') as f:
+                        f.write(uploaded_file.getbuffer())
+                    doc_path = temp_path
+                    progress_container.success("✅ Using manually uploaded PDF")
+                else:
+                    # Try automatic download
+                    progress_container.info("📥 Step 1/3: Downloading document...")
+                    doc_path = download_document(doc_link, bid_data=bid)
                 
                 if not doc_path:
-                    progress_container.error("❌ Failed to download document.")
+                    progress_container.warning("⚠️ GeM requires login to download documents automatically.")
+                    
+                    # Show instructions with document button
+                    st.markdown(f"""
+                    **📄 To analyze this bid:**
+                    1. [**Click here to open document in browser**]({doc_link}) (opens in new tab)
+                    2. Download/save the PDF from the portal
+                    3. Upload it below ⬇️
+                    """)
+                    
+                    # File uploader for manual upload
+                    uploaded_pdf = st.file_uploader(
+                        "📤 Upload the bid document PDF",
+                        type=['pdf'],
+                        key=f"uploader_{bid_num}",
+                        help="Download the document from GeM portal and upload here"
+                    )
+                    
+                    if uploaded_pdf is not None:
+                        # Save to session state and continue analysis
+                        st.session_state[upload_key] = uploaded_pdf
+                        st.success("✅ PDF uploaded! Processing now...")
+                        # Rerun to process the uploaded file
+                        st.rerun()
+                    
                     st.session_state[running_key] = False
                     return
                 
@@ -522,6 +570,10 @@ def run_and_display_analysis(bid, key_suffix):
                     
                     # Standard CFS analysis
                     full_analysis = analyze_bid_complete(bid, sow_text=sow_summary, pdf_path=doc_path)
+                    
+                    # Add sow_summary and bid_number to analysis for database and email
+                    full_analysis['sow_summary'] = sow_summary
+                    full_analysis['bid_number'] = bid_num
                     
                     # Save to database
                     st.session_state.db.save_ai_analysis(full_analysis)
@@ -1064,17 +1116,158 @@ if page == "🔎 Scraper":
         st.markdown("### Daily Scraper (Last 24 Hours)")
         st.caption("Scrape and analyze bids published in the last 24 hours")
         
-        col1, col2 = st.columns([2, 1])
+        col1, col2, col3 = st.columns([2, 1, 1])
         with col1:
             daily_scrape = st.button("▶️ Run Daily Scrape Now", type="primary", use_container_width=True)
+        with col3:
+            load_from_db = st.button("📂 Load Saved Bids", use_container_width=True, help="Load previously scraped bids from database")
+
         with col2:
-            if st.button("📧 Email Report", key="daily_email_btn", use_container_width=True):
-                if 'current_results' in st.session_state and st.session_state['current_results']:
-                    trigger_team_email(st.session_state['current_results'], source_name="Daily Scraper")
-                else:
-                    st.warning("⚠️ Run a scrape first to generate a report.")
+            show_email_options = st.button("📧 Email Report", key="daily_email_btn", use_container_width=True)
+        
+        # Email Options Panel (appears when button is clicked)
+        if show_email_options or st.session_state.get('show_email_panel', False):
+            st.session_state['show_email_panel'] = True
+            
+            if 'current_results' not in st.session_state or not st.session_state['current_results']:
+                st.warning("⚠️ Run a scrape first to generate a report.")
+                st.session_state['show_email_panel'] = False
+            else:
+                with st.expander("📧 Email Options", expanded=True):
+                    results = st.session_state['current_results']
+                    
+                    # Get team emails from database
+                    team_emails = get_team_emails()
+                    
+                    # Recipient Selection
+                    st.markdown("**Select Recipients:**")
+                    recipient_option = st.radio(
+                        "Send to:",
+                        ["All Team Members", "Select Specific Recipients"],
+                        key="email_recipient_option",
+                        horizontal=True
+                    )
+                    
+                    if recipient_option == "Select Specific Recipients":
+                        selected_recipients = st.multiselect(
+                            "Choose recipients:",
+                            options=team_emails,
+                            default=[],
+                            key="email_selected_recipients"
+                        )
+                        # Option to add custom email
+                        custom_email = st.text_input("Or add a custom email:", placeholder="example@email.com", key="email_custom")
+                        if custom_email and custom_email not in selected_recipients:
+                            selected_recipients.append(custom_email)
+                    else:
+                        selected_recipients = team_emails
+                    
+                    st.divider()
+                    
+                    # Bid Selection
+                    st.markdown("**Select Bids to Include:**")
+                    bid_option = st.radio(
+                        "Include:",
+                        ["All Bids", "Select Specific Bids"],
+                        key="email_bid_option",
+                        horizontal=True
+                    )
+                    
+                    if bid_option == "Select Specific Bids":
+                        # Create bid options with labels
+                        bid_options = {f"{b.get('Bid Number', 'N/A')[:20]} - {b.get('Items', 'N/A')[:40]}": i for i, b in enumerate(results)}
+                        selected_bid_labels = st.multiselect(
+                            "Choose bids:",
+                            options=list(bid_options.keys()),
+                            default=[],
+                            key="email_selected_bids"
+                        )
+                        selected_bids = [results[bid_options[label]] for label in selected_bid_labels]
+                    else:
+                        selected_bids = results
+                    
+                    st.divider()
+                    
+                    # Summary and Send
+                    col_summary1, col_summary2 = st.columns(2)
+                    with col_summary1:
+                        st.metric("Recipients", len(selected_recipients))
+                    with col_summary2:
+                        st.metric("Bids", len(selected_bids))
+                    
+                    col_send, col_cancel = st.columns(2)
+                    with col_send:
+                        if st.button("📨 Send Email", type="primary", use_container_width=True, key="send_email_confirm"):
+                            if not selected_recipients:
+                                st.error("Please select at least one recipient.")
+                            elif not selected_bids:
+                                st.error("Please select at least one bid.")
+                            else:
+                                from email_notifier import send_email_digest
+                                # Adapt bids for email
+                                adapted_bids = []
+                                for bid in selected_bids:
+                                    cfs = {
+                                        'score': bid.get('CFS Score') or 0,
+                                        'verdict': bid.get('Verdict', 'N/A'),
+                                        'reasoning': bid.get('Reasoning', 'N/A')
+                                    }
+                                    go_no_go = {'overall_recommendation': bid.get('Recommendation', 'N/A')}
+                                    adapted_bids.append({
+                                        'bid': bid,
+                                        'analysis': {'cfs': cfs, 'go_no_go': go_no_go},
+                                        'sow_summary': bid.get('sow_summary', '')
+                                    })
+                                
+                                subject = f"📊 Daily Scraper: {len(selected_bids)} Bids - {datetime.now().strftime('%d %b %Y')}"
+                                success = send_email_digest(adapted_bids, recipient_emails=selected_recipients, subject=subject)
+                                
+                                if success:
+                                    st.success(f"✅ Email sent to {len(selected_recipients)} recipients!")
+                                    st.session_state['show_email_panel'] = False
+                                else:
+                                    st.error("❌ Failed to send email. Check logs.")
+                    
+                    with col_cancel:
+                        if st.button("Cancel", use_container_width=True, key="cancel_email"):
+                            st.session_state['show_email_panel'] = False
+                            st.rerun()
+        
+        # Handle Load from Database button
+        if load_from_db:
+            with st.spinner("📂 Loading bids from database..."):
+                try:
+                    from database import CIPDatabase
+                    db = CIPDatabase()
+                    saved_bids = db.get_recent_bids_with_analysis(limit=500)
+                    if saved_bids:
+                        # Convert database format to display format
+                        loaded_results = []
+                        for bid in saved_bids:
+                            loaded_bid = {
+                                'Bid Number': bid.get('bid_number', ''),
+                                'Items': bid.get('title', bid.get('items', '')),
+                                'Department': bid.get('department', ''),
+                                'Start Date': bid.get('start_date', ''),
+                                'End Date': bid.get('end_date', ''),
+                                'Document Link': bid.get('document_link', bid.get('budget', '')),
+                                'Source Portal': bid.get('source_portal', 'gem'),
+                                'Intent Analysis': bid.get('ai_summary', 'N/A'),
+                                'Primary Archetype': bid.get('primary_archetype', 'N/A'),
+                                'Priority Band': bid.get('priority_band', 'MEDIUM'),
+                                'Action': bid.get('action', 'Review'),
+                                'Confidence': bid.get('confidence_score', 0),
+                            }
+                            loaded_results.append(loaded_bid)
+                        st.session_state['current_results'] = loaded_results
+                        st.success(f"✅ Loaded {len(loaded_results)} bids from database")
+                    else:
+                        st.info("No saved bids found in database. Run a scrape first.")
+                except Exception as e:
+                    st.error(f"Error loading from database: {e}")
         
         if daily_scrape:
+
             with st.spinner("🔄 Scraping bids from last 24 hours..."):
                 try:
                     # Calculate 24 hours ago
@@ -1083,9 +1276,18 @@ if page == "🔎 Scraper":
                     
                     # Use Unified Scraper for Daily Scrape (Default to GeM + Others if configured)
                     unified = UnifiedScraper()
+                    
+                    # Combine all search terms - use FULL organization names for comprehensive coverage
+                    # ALL_DEFENCE_ORGANIZATIONS includes MOD_ORGANIZATIONS + DEFENCE_PSUS (~200 orgs)
+                    all_keywords = list(KEYWORD_EXPANSIONS.keys()) + ALL_DEFENCE_ORGANIZATIONS + DEFENCE_ORG_KEYWORDS
+                    # Determine unique keywords to avoid redundant searches if overlaps exist
+                    unique_keywords = list(set(all_keywords))
+                    
+                    st.info(f"🔎 Scraping with {len(unique_keywords)} keywords (including all Defence orgs)...")
+                    
                     bids = unified.scrape(
-                        portals=['gem', 'cppp', 'dppp'],
-                        keywords="consultancy",
+                        portals=['gem', 'cppp', 'dppp', 'goa_shipyard', 'ddp'],
+                        keywords=unique_keywords,
                         from_date=yesterday,
                         to_date=today,
                         max_pages=5,
@@ -1094,18 +1296,152 @@ if page == "🔎 Scraper":
                     )
                     
                     if bids:
-                        st.success(f"✅ Found {len(bids)} bids in last 24 hours!")
+                        # Show breakdown by portal
+                        portal_counts = {}
+                        for bid in bids:
+                            portal = bid.get('Source Portal', 'unknown')
+                            portal_counts[portal] = portal_counts.get(portal, 0) + 1
                         
-                        # Apply AI analysis
-                        if st.session_state.get('agent'):
-                            with st.spinner("🤖 Applying AI analysis..."):
-                                analyzed_results = []
+                        breakdown = ", ".join([f"{p.upper()}: {c}" for p, c in portal_counts.items()])
+                        st.success(f"✅ Found {len(bids)} bids ({breakdown})")
+                        
+                        # Apply Intent-Driven v4.1 analysis
+                        with st.spinner("🤖 Applying Intent-Driven v4.1 analysis..."):
+                            try:
+                                from intent_scorer import analyze_bid_intent, IntentDrivenScorer
+                                
+                                # Apply pre-filter to exclude non-consulting bids early
+                                # Note: DPSU portals (goa_shipyard, ddp) bypass prefilter as they're already defence-focused
+                                DPSU_PORTALS = ['goa_shipyard', 'ddp', 'grse', 'bdl', 'hal', 'bhel']
+                                scorer = IntentDrivenScorer()
+                                pre_filtered_bids = []
+                                skipped_count = 0
                                 for bid in bids:
-                                    analysis = st.session_state.agent.analyze_bid(bid)
-                                    analyzed_results.append({**bid, **analysis})
-                                st.session_state['current_results'] = analyzed_results
-                        else:
-                            st.session_state['current_results'] = bids
+                                    source_portal = bid.get('Source Portal', '').lower()
+                                    # DPSU portals bypass prefilter - include all their bids
+                                    if source_portal in DPSU_PORTALS:
+                                        pre_filtered_bids.append(bid)
+                                    elif scorer.quick_prefilter(bid):
+                                        pre_filtered_bids.append(bid)
+                                    else:
+                                        skipped_count += 1
+                                
+                                if skipped_count > 0:
+                                    st.info(f"🔍 Pre-filter: Skipped {skipped_count} non-consulting bids (supplies, equipment, medicine, etc.)")
+                                
+                                if not pre_filtered_bids:
+                                    st.warning("⚠️ No consulting-related bids found after filtering.")
+                                    st.session_state['current_results'] = []
+                                else:
+                                    analyzed_results = []
+                                    progress_bar = st.progress(0)
+                                    for idx, bid in enumerate(pre_filtered_bids):
+                                        intent_analysis = analyze_bid_intent(bid)
+                                        # Merge intent analysis results into bid
+                                        enriched_bid = {
+                                            **bid,
+                                            'Intent Analysis': intent_analysis.get('buyer_intent', 'N/A'),
+                                            'Primary Archetype': intent_analysis.get('primary_archetype', 'N/A'),
+                                            'Priority Band': intent_analysis.get('priority_band', 'LOW'),
+                                            'Action': intent_analysis.get('action', 'Review'),
+                                            'Dominant Risk': intent_analysis.get('dominant_risk', 'N/A'),
+                                            'Confidence': intent_analysis.get('confidence_scores', {}).get('final_percent', 0),
+                                            'intent_analysis_full': intent_analysis
+                                        }
+                                        analyzed_results.append(enriched_bid)
+                                        progress_bar.progress((idx + 1) / len(pre_filtered_bids))
+                                    st.session_state['current_results'] = analyzed_results
+                                    
+                                    # Save bids to database for persistence
+                                    try:
+                                        from database import CIPDatabase
+                                        db = CIPDatabase()
+                                        saved_count = 0
+                                        for bid in analyzed_results:
+                                            db.save_bid(bid)
+                                            saved_count += 1
+                                        st.info(f"💾 Saved {saved_count} bids to database")
+                                    except Exception as save_error:
+                                        st.warning(f"⚠️ Could not save to database: {save_error}")
+                                    
+                                    # ========== AUTO FULL ANALYSIS ==========
+                                    # Run Full Analysis (SOW + CFS) on HIGH priority bids automatically
+                                    high_priority_bids = [b for b in analyzed_results if b.get('Priority Band') == 'HIGH']
+                                    
+                                    if high_priority_bids:
+                                        st.info(f"🤖 Running Full Analysis on {len(high_priority_bids)} HIGH priority bids...")
+                                        analysis_progress = st.progress(0)
+                                        analysis_status = st.empty()
+                                        
+                                        for idx, bid in enumerate(high_priority_bids):
+                                            bid_num = bid.get('Bid Number', 'Unknown')
+                                            doc_link = bid.get('Document Link', '')
+                                            
+                                            analysis_status.text(f"Analyzing {idx+1}/{len(high_priority_bids)}: {bid_num[:30]}...")
+                                            
+                                            try:
+                                                # Check if already analyzed
+                                                cached_analysis = db.get_bid_with_analysis(bid_num)
+                                                if cached_analysis and cached_analysis.get('sow_summary'):
+                                                    # Already analyzed, skip
+                                                    analysis_progress.progress((idx + 1) / len(high_priority_bids))
+                                                    continue
+                                                
+                                                # Download document
+                                                doc_path = None
+                                                if doc_link:
+                                                    from gem_scraper import download_document
+                                                    doc_path = download_document(doc_link, bid_data=bid)
+                                                
+                                                # If download failed (GeM requires login), skip this bid
+                                                if not doc_path:
+                                                    analysis_progress.progress((idx + 1) / len(high_priority_bids))
+                                                    continue
+                                                
+                                                # Extract SOW using VirtualAgent
+                                                from virtual_agent import BidReaderAgent
+                                                agent = BidReaderAgent(doc_path)
+                                                sow_summary = agent.summarize_sow()
+                                                
+                                                # Run CFS Analysis
+                                                from ai_analyzer import analyze_bid_complete
+                                                full_analysis = analyze_bid_complete(bid, sow_text=sow_summary, pdf_path=doc_path)
+                                                
+                                                # Add sow_summary and bid_number to analysis
+                                                full_analysis['sow_summary'] = sow_summary
+                                                full_analysis['bid_number'] = bid_num
+                                                
+                                                # Save to database
+                                                db.save_ai_analysis(full_analysis)
+                                                
+                                                # Update the bid in analyzed_results with CFS score
+                                                bid['CFS Score'] = full_analysis.get('cfs', {}).get('score', 0)
+                                                bid['Verdict'] = full_analysis.get('cfs', {}).get('verdict', 'N/A')
+                                                bid['Recommendation'] = full_analysis.get('go_no_go', {}).get('overall_recommendation', 'N/A')
+                                                bid['sow_summary'] = sow_summary
+                                                
+                                            except Exception as analysis_error:
+                                                st.warning(f"⚠️ Could not analyze {bid_num[:20]}: {str(analysis_error)[:50]}")
+                                            
+                                            analysis_progress.progress((idx + 1) / len(high_priority_bids))
+                                        
+                                        analysis_status.empty()
+                                        st.success(f"✅ Full Analysis complete for HIGH priority bids!")
+                                        st.session_state['current_results'] = analyzed_results  # Update with CFS scores
+                                    
+                                    # ========== END AUTO FULL ANALYSIS ==========
+                                    
+                                    # Show summary
+                                    high_priority = len([b for b in analyzed_results if b.get('Priority Band') == 'HIGH'])
+                                    medium_priority = len([b for b in analyzed_results if b.get('Priority Band') == 'MEDIUM'])
+                                    st.success(f"✅ Analyzed {len(analyzed_results)} bids: {high_priority} HIGH, {medium_priority} MEDIUM priority")
+                            except ImportError as e:
+                                st.warning(f"Intent scorer not available: {e}. Using basic results.")
+                                st.session_state['current_results'] = bids
+                            except Exception as e:
+                                st.error(f"Analysis error: {e}")
+                                st.session_state['current_results'] = bids
+
                     else:
                         st.info("No new bids found in the last 24 hours")
                 except Exception as e:
@@ -1269,7 +1605,7 @@ if page == "🔎 Scraper":
                             st.session_state.db.save_bid(bid)
                             analyzed_bids.append(bid)
                     
-                    analyzed_bids.sort(key=lambda x: x.get('CFS Score', 0), reverse=True)
+                    analyzed_bids.sort(key=lambda x: x.get('CFS Score') or 0, reverse=True)
                     st.session_state['current_results'] = analyzed_bids
                     st.success(f"✅ Complete! {len(analyzed_bids)} bids loaded")
                 else:
@@ -1295,7 +1631,7 @@ if page == "🔎 Scraper":
         with col2:
             history_to = st.date_input("To", value=datetime.now(), key="hist_to")
         with col3:
-            limit = st.selectbox("Limit", [50, 100, 200, 500], index=0, key="hist_limit")
+            limit = st.selectbox("Limit", [50, 100, 200, 500], index=3, key="hist_limit")
         
         # Search button
         col1, col2 = st.columns(2)
@@ -1350,7 +1686,7 @@ if page == "🔎 Scraper":
         # Filter results
         filtered_results = results
         if 'CFS Score' in results[0]:
-            filtered_results = [r for r in results if r.get('CFS Score', 0) >= min_score]
+            filtered_results = [r for r in results if (r.get('CFS Score') or 0) >= min_score]
         if category_filter:
             filtered_results = [r for r in filtered_results if r.get('Category') in category_filter]
         
@@ -1382,7 +1718,7 @@ if page == "🔎 Scraper":
                     with col2:
                         # CFS Score badge
                         if 'CFS Score' in bid:
-                            score = bid['CFS Score']
+                            score = bid.get('CFS Score') or 0
                             verdict = bid.get('Verdict', '')
                             
                             if verdict == 'Analysis Failed':
@@ -1446,6 +1782,9 @@ if page == "🔎 Scraper":
                 mime="text/csv"
             )
         with col2:
+            # Prepare JSON data
+            json_data = json.dumps(filtered_results, indent=2, default=str)
+            
             st.download_button(
                 "📥 Download JSON (with AI data)",
                 data=json_data,

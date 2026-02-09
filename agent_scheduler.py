@@ -14,7 +14,7 @@ from gem_scraper import download_document
 from portal_scrapers import UnifiedScraper, PortalType
 from ai_analyzer import analyze_bid_complete
 from database import CIPDatabase
-from config import SCHEDULER_CONFIG, NOTIFICATION_CONFIG, FIRM_PROFILE
+from config import SCHEDULER_CONFIG, NOTIFICATION_CONFIG, FIRM_PROFILE, KEYWORD_EXPANSIONS, DEFENCE_ORG_KEYWORDS
 
 
 class CIPAgent:
@@ -36,9 +36,16 @@ class CIPAgent:
         yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
         today = datetime.now().strftime('%Y-%m-%d')
         
+        # Combine all search terms
+        all_keywords = list(KEYWORD_EXPANSIONS.keys()) + DEFENCE_ORG_KEYWORDS
+        # Determine unique keywords to avoid redundant searches if overlaps exist
+        unique_keywords = list(set(all_keywords))
+        
+        print(f"Scraping with {len(unique_keywords)} keywords...")
+        
         bids = scraper.scrape(
             portals=['gem', 'cppp', 'dppp'],
-            keywords="consultancy",
+            keywords=unique_keywords,
             from_date=yesterday,
             to_date=today,
             max_pages=10,

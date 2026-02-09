@@ -4,11 +4,14 @@ Unified Scraper - Orchestrates scraping across multiple portals (GeM, CPPP, DPPP
 
 import logging
 import concurrent.futures
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
 
 from gem_scraper import scrape_bids as scrape_gem_bids
-from .nic_scraper import CPPPScraper, DPPPScraper
+from .gem_cppp_scraper import GeMCPPPScraper  # Uses gem.gov.in/cppp (no CAPTCHA)
+from .nic_scraper import DPPPScraper, EProcureScraper, GRSEScraper  # NIC GEP scrapers
+from .goa_shipyard_scraper import GoaShipyardScraper  # Goa Shipyard
+from .ddp_scraper import DDPScraper  # Dept of Defence Production
 from .base_scraper import ScrapedBid, PortalType
 
 logger = logging.getLogger(__name__)
@@ -21,15 +24,20 @@ class UnifiedScraper:
     
     def __init__(self):
         self.scrapers = {
-            PortalType.CPPP.value: CPPPScraper(),
-            PortalType.DPPP.value: DPPPScraper()
+            PortalType.CPPP.value: GeMCPPPScraper(),  # Uses gem.gov.in/cppp (no CAPTCHA!)
+            PortalType.DPPP.value: DPPPScraper(),  # DPPP still has CAPTCHA issues
+            # Phase 2 DPSU portals
+            PortalType.EPROCURE.value: EProcureScraper(),
+            PortalType.GRSE.value: GRSEScraper(),
+            PortalType.GOA_SHIPYARD.value: GoaShipyardScraper(),
+            PortalType.DDP.value: DDPScraper(),
         }
         # GeM is functional, so handled separately in scrape method
     
     def scrape(
         self,
         portals: List[str],
-        keywords: str = "",
+        keywords: Union[str, List[str]] = "",
         from_date: str = "",
         to_date: str = "",
         max_pages: int = None,
@@ -80,9 +88,12 @@ class UnifiedScraper:
                 logger.error(f"Error scraping GeM: {e}")
                 errors.append(f"GeM: {str(e)}")
 
-        # 2. Scrape NIC Portals (CPPP, DPPP)
+        # 2. Scrape NIC Portals (CPPP, DPPP) and DPSU Portals (goa_shipyard, ddp, etc.)
         # These can be run in parallel
         nic_portals = [p for p in portals if p in self.scrapers]
+        
+        logger.info(f"Processing portals: {nic_portals} (from request: {portals})")
+        print(f"DEBUG: Processing portals: {nic_portals} (requested: {portals})")
         
         if nic_portals:
             with concurrent.futures.ThreadPoolExecutor(max_workers=len(nic_portals)) as executor:
@@ -113,7 +124,7 @@ class UnifiedScraper:
     def _scrape_nic_portal(
         self,
         portal_name: str,
-        keywords: str,
+        keywords: Union[str, List[str]],
         max_pages: int,
         consulting_only: bool,
         **kwargs
@@ -122,6 +133,12 @@ class UnifiedScraper:
         scraper = self.scrapers.get(portal_name)
         if not scraper:
             return []
+        
+        # Convert keywords list to pipe-separated string if needed
+        if isinstance(keywords, list):
+            keywords_str = "|".join(keywords)
+        else:
+            keywords_str = keywords or ""
             
         # Default to 3 pages for NIC if not specified, as they can be slow
         pages = max_pages if max_pages else 3
@@ -130,7 +147,7 @@ class UnifiedScraper:
         
         # Scrape
         scraped_objects = scraper.scrape_bids(
-            keywords=keywords,
+            keywords=keywords_str,
             max_pages=pages,
             **kwargs
         )

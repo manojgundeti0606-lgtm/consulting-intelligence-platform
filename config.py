@@ -300,24 +300,101 @@ MOD_ORGANIZATIONS = [
     "Air Force Wives Welfare Association",
 ]
 
-# Defence Public Sector Undertakings (DPSUs)
+# Defence Public Sector Undertakings (DPSUs) and their units
 DEFENCE_PSUS = [
-    "Advanced Weapons and Equipment India Limited AWEIL",
-    "Armoured Vehicles Nigam Limited AVNL",
+    # Existing DPSUs
     "Bharat Earth Movers Limited BEML",
     "Bharat Electronics Limited BEL",
     "Garden Reach Shipbuilders and Engineers Limited GRSE",
-    "GLIDERS INDIA LIMITED GIL",
     "Goa Shipyard Limited",
     "Hindustan Aeronautics Limited HAL",
     "Hindustan Shipyard Limited HSL",
-    "India Optel Limited IOL",
-    "TROOP COMFORTS LIMITED TCL",
-    "Yantra India Limited YIL",
     "Mazagon Dock Shipbuilders Limited",
     "Bharat Dynamics Ltd",
-    "Munition India Limited",
     "Mishra Dhatu Nigam Ltd MIDHANI",
+    
+    # ===== 7 New DPSUs (from OFB) =====
+    
+    # 1. Munitions India Limited (MIL)
+    "Munitions India Limited", "MIL",
+    "Munitions India Limited Headquarters Pune", "MILHQ",
+    "Ammunition Factory Khadki", "AFK",
+    "Cordite Factory Aruvankadu", "CFA",
+    "High Energy Projectile Factory Tiruchirapalli", "HEPF",
+    "High Explosive Factory Khadki", "HEF",
+    "Ordnance Factory Bhandara", "OFBA",
+    "Ordnance Factory Badmal", "OFBOL",
+    "Ordnance Factory Chanda", "OFCH",
+    "Ordnance Factory Dehu Road", "OFDR",
+    "Ordnance Factory Itarsi", "OFI",
+    "Ordnance Factory Khamaria", "OFK",
+    "Ordnance Factory Nalanda", "OFN",
+    "Ordnance Factory Varangaon", "OFV",
+    "Munitions India Limited Controllerate of Safety", "MILCOS",
+    "National Academy of Defence Production", "NADP",
+    "Ordnance Factory Institute of Learning Khamaria", "OFILKH",
+    
+    # 2. Armoured Vehicles Nigam Limited (AVNL)
+    "Armoured Vehicles Nigam Limited", "AVNL",
+    "Armoured Vehicles Nigam Limited Headquarters Avadi", "AVNLHQ",
+    "Engine Factory Avadi", "EFA",
+    "Heavy Vehicle Factory Avadi", "HVF",
+    "Machine Tool Prototype Factory Ambarnath", "MPF",
+    "Ordnance Factory Medak", "OFMK",
+    "Vehicle Factory Jabalpur", "VFJ",
+    "AVNL Institute of Learning Ambarnath", "AVNLIOLAM",
+    "AVNL Institute of Learning Avadi", "AVNLIOLAV",
+    "AVNL Institute of Learning Medak", "AVNLIOLMK",
+    
+    # 3. Advanced Weapons and Equipment India Limited (AWEIL)
+    "Advanced Weapons and Equipment India Limited", "AWEIL",
+    "Advanced Weapons and Equipment India Limited Headquarters", "AWEILHQ",
+    "Field Gun Factory Kanpur", "FGK",
+    "Gun Carriage Factory Jabalpur", "GCF",
+    "Gun Shell Factory Cossipore", "GSF",
+    "Ordnance Factory Kanpur", "OFC",
+    "Ordnance Factory Project Korwa", "OFPKR",
+    "Ordnance Factory Tiruchirapalli", "OFT",
+    "Rifle Factory Ishapore", "RFI",
+    "Small Arms Factory Kanpur", "SAF",
+    "Academy of Weapons Technology and Management Ichapore", "AWTM",
+    
+    # 4. Troop Comforts Limited (TCL)
+    "Troop Comforts Limited", "TCL",
+    "Troop Comforts Limited Headquarters Kanpur", "TCLHQ",
+    "Ordnance Clothing Factory Avadi", "OCFAV",
+    "Ordnance Clothing Factory Shahjahanpur", "OCFS",
+    "Ordnance Equipment Factory Kanpur", "OEFC",
+    "Ordnance Equipment Factory Hazratpur", "OEFHZ",
+    "Troop Comforts Limited Training Academy Kanpur", "TCLTA",
+    
+    # 5. Yantra India Limited (YIL)
+    "Yantra India Limited", "YIL",
+    "Yantra India Limited Headquarters Ambajhari", "YILHQ",
+    "Metal Steel Factory", "MSF",
+    "Ordnance Factory Ambarnath", "OFA",
+    "Ordnance Factory Ambajhari", "OFAJ",
+    "Ordnance Factory Bhusawal", "OFBH",
+    "Ordnance Factory Dum Dum", "OFDC",
+    "Ordnance Factory Jabalpur", "OFJ",
+    "Ordnance Factory Katni", "OFKAT",
+    "Ordnance Factory Muradnagar", "OFM",
+    "Yantra Institute of Technology and Management Ambajhari", "YITM",
+    "Yantra Business Development Centre New Delhi", "YBDC",
+    "Yantra India Limited Kolkata Office Ishapore", "YILKO",
+    
+    # 6. India Optel Limited (IOL)
+    "India Optel Limited", "IOL",
+    "India Optel Limited Headquarters Dehradun", "IOLHQ",
+    "Ordnance Factory Chandigarh", "OFCD",
+    "Ordnance Factory Dehradun", "OFDUN",
+    "Opto Electronic Factory Dehradun", "OLF",
+    "Ordnance Factory Institute of Learning Dehradun", "OFIOLDD",
+    
+    # 7. Gliders India Limited (GIL)
+    "Gliders India Limited", "GIL",
+    "Gliders India Limited Headquarters Kanpur", "GILHQ",
+    "Ordnance Parachute Factory Kanpur", "OPF",
 ]
 
 # Combined list for searching

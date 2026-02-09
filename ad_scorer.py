@@ -46,6 +46,35 @@ class ADScorer:
         self.ad_keywords = get_all_ad_keywords()
         self.negative_keywords = get_all_negative_keywords()
     
+    def check_ai_trigger(self, score: float, tender_data: Dict) -> Tuple[bool, str]:
+        """
+        Determine if AI analysis should be triggered based on score, budget, or buyer.
+        
+        Returns:
+            Tuple[bool, str]: (should_trigger, reason)
+        """
+        # Trigger 1: Score threshold (lowered to 30 for high recall)
+        if score >= 30:
+            return True, f"Score {score:.1f} >= 30"
+            
+        # Trigger 2: High Budget (>= ₹1 Crore)
+        budget = self._extract_budget(tender_data)
+        if budget >= 10000000:
+            return True, f"High Budget (₹{budget/10000000:.1f} Cr)"
+            
+        # Trigger 3: Strategic Buyer (Tier 1, 2, or 3)
+        buyer = tender_data.get('department', tender_data.get('Department', ''))
+        tier, _ = get_buyer_tier(buyer)
+        if tier in ["tier_1", "tier_2", "tier_3"]:
+            return True, f"Strategic Buyer ({tier})"
+            
+        # Trigger 4: Explicit Consulting/Advisory in title
+        title = tender_data.get('title', tender_data.get('Bid Number', '')).lower()
+        if "consult" in title or "advis" in title or "pmu" in title or "dpr" in title:
+            return True, "Strong Keyword in Title"
+            
+        return False, "Below threshold and no strategic triggers"
+
     def calculate_ad_relevance_score(self, tender_data: Dict) -> Dict[str, Any]:
         """
         Calculate comprehensive A&D relevance score for a tender.
@@ -118,6 +147,9 @@ class ADScorer:
             ad_relevance_score, recommendation, tender_data
         )
         
+        # Check if AI analysis should be triggered
+        should_trigger_ai, trigger_reason = self.check_ai_trigger(ad_relevance_score, tender_data)
+        
         return {
             "tender_id": tender_data.get('Bid Number', tender_data.get('tender_id', 'N/A')),
             "title": title,
@@ -139,7 +171,9 @@ class ADScorer:
                 "capability_gap": round(capability_score, 1)
             },
             "interpretation": interpretation,
-            "reasoning": reasoning
+            "reasoning": reasoning,
+            "ai_trigger_status": should_trigger_ai,
+            "ai_trigger_reason": trigger_reason
         }
     
     def _calculate_keyword_score(self, text: str) -> Tuple[float, List[str]]:
