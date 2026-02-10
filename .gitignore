@@ -38,6 +38,11 @@ ENV/
 # Credentials/Secrets
 client_secret*.json
 google_credentials.json
+service_info*.json
+credentials.json
+token.json
+*.pem
+*.key
 
 # Database
 *.db
