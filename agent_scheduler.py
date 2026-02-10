@@ -10,10 +10,11 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from gem_scraper import scrape_bids, download_document
+from gem_scraper import download_document
+from portal_scrapers import UnifiedScraper, PortalType
 from ai_analyzer import analyze_bid_complete
 from database import CIPDatabase
-from config import SCHEDULER_CONFIG, NOTIFICATION_CONFIG, FIRM_PROFILE
+from config import SCHEDULER_CONFIG, NOTIFICATION_CONFIG, FIRM_PROFILE, KEYWORD_EXPANSIONS, DEFENCE_ORG_KEYWORDS
 
 
 class CIPAgent:
@@ -30,13 +31,26 @@ class CIPAgent:
         """
         print(f"[{datetime.now()}] Starting Daily Intelligence Run...")
         
-        # Scrape consulting bids (using default settings)
-        bids = scrape_bids(
-            keywords="",  # Broad search
-            from_date="",
-            to_date="",
+        # Scrape consulting bids across all portals
+        scraper = UnifiedScraper()
+        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        # Combine all search terms
+        all_keywords = list(KEYWORD_EXPANSIONS.keys()) + DEFENCE_ORG_KEYWORDS
+        # Determine unique keywords to avoid redundant searches if overlaps exist
+        unique_keywords = list(set(all_keywords))
+        
+        print(f"Scraping with {len(unique_keywords)} keywords...")
+        
+        bids = scraper.scrape(
+            portals=['gem', 'cppp', 'dppp'],
+            keywords=unique_keywords,
+            from_date=yesterday,
+            to_date=today,
             max_pages=10,
-            consulting_only=True
+            consulting_only=True,
+            date_filter_type='start'
         )
         
         print(f"Found {len(bids)} consulting bids")
@@ -52,8 +66,28 @@ class CIPAgent:
             print(f"Downloading document for bid {bid['Bid Number']}...")
             pdf_path = download_document(bid['Document Link'], bid_data=bid)
             
+            # Extract SOW using Virtual User
+            sow_summary = ""
+            if pdf_path:
+                try:
+                    from virtual_agent import BidReaderAgent
+                    agent = BidReaderAgent(pdf_path)
+                    sow_summary = agent.summarize_sow()
+                    print(f"  SOW extracted: {len(sow_summary)} chars")
+                except Exception as e:
+                    print(f"  SOW extraction failed: {e}")
+            
             # Run AI analysis with Virtual User
-            analysis = analyze_bid_complete(bid, pdf_path=pdf_path)
+            analysis = analyze_bid_complete(bid, pdf_path=pdf_path, sow_text=sow_summary)
+            
+            # Run A&D Intelligence Analysis
+            ad_analysis = None
+            try:
+                from ai_analyzer import analyze_tender_ad_intelligence
+                ad_analysis = analyze_tender_ad_intelligence(bid, sow_text=sow_summary, pdf_path=pdf_path)
+                print(f"  A&D Score: {ad_analysis.get('a_d_relevance_score', 0):.0f}, Rec: {ad_analysis.get('recommendation', 'N/A')}")
+            except Exception as e:
+                print(f"  A&D analysis failed: {e}")
             
             # Save analysis
             self.db.save_ai_analysis(analysis)
@@ -64,18 +98,44 @@ class CIPAgent:
 
             analyzed_bids.append({
                 "bid": bid,
-                "analysis": analysis
+                "analysis": analysis,
+                "ad_analysis": ad_analysis,
+                "sow_summary": sow_summary
             })
             
             # Filter high-fit bids
             if analysis['cfs']['score'] >= NOTIFICATION_CONFIG['min_cfs_score']:
                 high_fit_bids.append({
                     "bid": bid,
-                    "analysis": analysis
+                    "analysis": analysis,
+                    "ad_analysis": ad_analysis,
+                    "sow_summary": sow_summary
                 })
         
         # Generate and save digest
         self.generate_digest(high_fit_bids)
+        
+        # Send email notification if enabled
+        if NOTIFICATION_CONFIG.get('enable_email', False):
+            try:
+                from email_notifier import send_email_digest
+                # Get recipients from DB
+                db_recipients = self.db.get_all_recipients()
+                if db_recipients:
+                    recipients = [r['email'] for r in db_recipients]
+                else:
+                    # Fallback to config
+                    recipients = NOTIFICATION_CONFIG.get('team_emails', [])
+                    
+                print(f"Sending email digest with {len(high_fit_bids)} high-fit bids to {len(recipients)} recipients...")
+                if send_email_digest(high_fit_bids, recipient_emails=recipients):
+                    print("✅ Email digest sent successfully!")
+                else:
+                    print("⚠️ Failed to send email digest")
+            except ImportError:
+                print("⚠️ Email module not available")
+            except Exception as e:
+                print(f"⚠️ Email error: {str(e)}")
         
         print(f"Daily run complete. Analyzed {len(analyzed_bids)} bids, {len(high_fit_bids)} high-fit")
         return len(high_fit_bids)
@@ -226,6 +286,27 @@ class CIPAgent:
             return self.daily_intelligence_run()
         elif job_name == 'watchlist':
             return self.monitor_watchlist()
+
+    def analyze_bid(self, bid: Dict) -> Dict:
+        """
+        Run on-demand analysis for a specific bid
+        """
+        # Download document
+        doc_link = bid.get('Document Link') or bid.get('document_link')
+        pdf_path = download_document(doc_link, bid_data=bid)
+        
+        # Extract SOW
+        sow_summary = ""
+        if pdf_path:
+            try:
+                from virtual_agent import BidReaderAgent
+                agent = BidReaderAgent(pdf_path)
+                sow_summary = agent.summarize_sow()
+            except Exception:
+                pass
+        
+        # Run Analysis
+        return analyze_bid_complete(bid, pdf_path=pdf_path, sow_text=sow_summary)
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ import time
 import os
 import random
 from datetime import datetime
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Set
 from config import (
     CONSULTING_TAXONOMY, KEYWORD_EXPANSIONS, SCRAPING_CONFIG,
     FIRM_PROFILE
@@ -17,16 +17,63 @@ BASE_URL = "https://bidplus.gem.gov.in"
 ALL_BIDS_URL = f"{BASE_URL}/all-bids"
 API_URL = f"{BASE_URL}/all-bids-data"
 
+
+def filter_new_bids(bids: List[Dict], db=None) -> Tuple[List[Dict], List[Dict]]:
+    """
+    Filters bids to separate new bids from already-seen bids.
+    
+    Args:
+        bids: List of scraped bids
+        db: Optional CIPDatabase instance for checking existing bids
+        
+    Returns:
+        Tuple of (new_bids, existing_bids)
+    """
+    if db is None:
+        try:
+            from database import CIPDatabase
+            db = CIPDatabase()
+        except ImportError:
+            # No database, return all as new
+            return (bids, [])
+    
+    existing_bid_numbers: Set[str] = set()
+    
+    # Get all existing bid numbers from database
+    try:
+        all_db_bids = db.get_all_bids(limit=1000)  # Get recent bids for deduplication
+        existing_bid_numbers = {b.get('bid_number') or b.get('Bid Number') for b in all_db_bids}
+    except (AttributeError, TypeError) as e:
+        # Log the specific error for debugging
+        print(f"Warning: Could not fetch existing bids for deduplication: {e}")
+    
+    new_bids = []
+    existing_bids = []
+    
+    for bid in bids:
+        bid_num = bid.get('Bid Number', '')
+        if bid_num in existing_bid_numbers:
+            existing_bids.append(bid)
+        else:
+            new_bids.append(bid)
+    
+    return (new_bids, existing_bids)
+
+
 def get_csrf_token(session):
     # print("Fetching main page to get CSRF token...")
-    response = session.get(ALL_BIDS_URL)
-    response.raise_for_status()
-    
-    match = re.search(r"'csrf_bd_gem_nk':\s*'([^']+)'", response.text)
-    if match:
-        return match.group(1)
-    else:
-        raise ValueError("CSRF token not found in page source")
+    try:
+        response = session.get(ALL_BIDS_URL)
+        response.raise_for_status()
+        
+        match = re.search(r"'csrf_bd_gem_nk':\s*'([^']+)'", response.text)
+        if match:
+            return match.group(1)
+        else:
+            raise ValueError("CSRF token not found in page source")
+    except Exception as e:
+        print(f"Error getting CSRF token: {e}")
+        return None
 
 
 def expand_keywords(keyword: str) -> List[str]:
@@ -52,6 +99,43 @@ def expand_keywords(keyword: str) -> List[str]:
             break
     
     return list(set(keywords))  # Remove duplicates
+
+
+def sanitize_keyword(keyword: str) -> str:
+    """
+    Sanitize keyword for GeM API to prevent 404 errors.
+    
+    Removes or replaces special characters that cause API failures:
+    - Forward slashes (/) - causes URL path issues
+    - Hyphens in e-words (e-governance) - causes parsing issues
+    - Other special characters
+    
+    Args:
+        keyword: Raw search keyword
+    
+    Returns:
+        Sanitized keyword safe for API calls
+    """
+    if not keyword:
+        return ""
+    
+    # Replace problematic patterns
+    sanitized = keyword
+    
+    # Replace / with space (e.g., "ai/ml" -> "ai ml")
+    sanitized = sanitized.replace('/', ' ')
+    
+    # Replace e- prefix with full word (e.g., "e-governance" -> "egovernance")
+    sanitized = re.sub(r'\be-', 'e', sanitized)
+    
+    # Remove other special characters that might cause issues
+    # Keep alphanumeric, spaces, and basic punctuation
+    sanitized = re.sub(r'[^\w\s\-\.]', ' ', sanitized)
+    
+    # Normalize multiple spaces
+    sanitized = re.sub(r'\s+', ' ', sanitized).strip()
+    
+    return sanitized
 
 
 def is_consulting_bid(bid_data: Dict) -> Tuple[bool, Optional[str]]:
@@ -95,16 +179,17 @@ def is_consulting_bid(bid_data: Dict) -> Tuple[bool, Optional[str]]:
     return (False, None)
 
 
-def scrape_bids(keywords="", from_date="", to_date="", max_pages=None, consulting_only=True):
+def scrape_bids(keywords="", from_date="", to_date="", max_pages=None, consulting_only=True, **kwargs):
     """
     Enhanced bid scraper with consulting taxonomy filtering
     
     Args:
         keywords: Search keywords
-        from_date: Start date (YYYY-MM-DD)
-        to_date: End date (YYYY-MM-DD)
+        from_date: Date filter (YYYY-MM-DD)
+        to_date: Date filter (YYYY-MM-DD)
         max_pages: Maximum pages to scrape (defaults to config)
         consulting_only: Filter for consulting bids only
+        **kwargs: Additional options like date_filter_type ('start' or 'end')
     
     Returns:
         List of bid dictionaries
@@ -116,23 +201,37 @@ def scrape_bids(keywords="", from_date="", to_date="", max_pages=None, consultin
     retry_attempts = SCRAPING_CONFIG['retry_attempts']
     retry_backoff = SCRAPING_CONFIG['retry_backoff']
     
+    # Determine date filter type
+    date_filter_type = kwargs.get('date_filter_type', 'end')
 
     session = requests.Session()
     session.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Referer": ALL_BIDS_URL,
         "Origin": BASE_URL,
         "X-Requested-With": "XMLHttpRequest"
     })
 
-    try:
-        csrf_token = get_csrf_token(session)
-    except Exception as e:
-        print(f"Error getting CSRF token: {e}")
+    csrf_token = get_csrf_token(session)
+    if not csrf_token:
         return []
 
     # Expand keywords
-    search_terms = expand_keywords(keywords) if keywords else [""]
+    if isinstance(keywords, list):
+        search_terms = []
+        for k in keywords:
+            if k:
+                search_terms.extend(expand_keywords(str(k)))
+        search_terms = list(set(search_terms)) # Deduplicate
+        if not search_terms:
+            search_terms = [""]
+    else:
+        search_terms = expand_keywords(keywords) if keywords else [""]
+    # Sanitize all search terms
+    search_terms = [sanitize_keyword(t) for t in search_terms if sanitize_keyword(t)]
+    if not search_terms:
+        search_terms = [""]
+    
     print(f"Searching for terms: {search_terms}")
 
     all_bids_dict = {} # Use dict to deduplicate by Bid Number
@@ -155,13 +254,16 @@ def scrape_bids(keywords="", from_date="", to_date="", max_pages=None, consultin
                     "bidStatusType": "ongoing_bids",
                     "byType": "all",
                     "highBidValue": "",
-                    "byEndDate": {
-                        "from": from_date, # Format: YYYY-MM-DD
-                        "to": to_date      # Format: YYYY-MM-DD
-                    },
-                    "sort": "Bid-End-Date-Oldest"
+                    "sort": "Bid-Start-Date-Latest"  # Sort by Start Date to get newest published bids
                 }
             }
+            
+            # Use server-side filter for end date if requested
+            if date_filter_type == 'end' and from_date and to_date:
+                payload['filter']['byEndDate'] = {
+                    "from": from_date,
+                    "to": to_date
+                }
             
             data = {
                 'payload': json.dumps(payload),
@@ -185,10 +287,19 @@ def scrape_bids(keywords="", from_date="", to_date="", max_pages=None, consultin
                         
                     docs = result.get('response', {}).get('response', {}).get('docs', [])
                     if not docs:
-                        # print(f"No docs found on page {page} for term '{term}'")
                         break
                         
                     for doc in docs:
+                        # Local start date filter
+                        if date_filter_type == 'start' and from_date:
+                            s_date_raw = doc.get('final_start_date_sort', [''])[0] if isinstance(doc.get('final_start_date_sort'), list) else doc.get('final_start_date_sort', '')
+                            # from_date is YYYY-MM-DD, s_date_raw is YYYY-MM-DDTHH:MM:SSZ
+                            if s_date_raw and s_date_raw < from_date:
+                                # Older than our window, can skip (but don't break yet if out of order)
+                                continue
+                            if to_date and s_date_raw > to_date + "T23:59:59Z":
+                                continue
+
                         b_id_raw = doc.get('b_id')
                         if isinstance(b_id_raw, list) and len(b_id_raw) > 0:
                             b_id = str(b_id_raw[0])
@@ -277,7 +388,14 @@ def scrape_bids(keywords="", from_date="", to_date="", max_pages=None, consultin
             
             page += 1
 
-    return list(all_bids_dict.values())
+    # Sort results by bid number (descending) for consistent order
+    sorted_bids = sorted(
+        all_bids_dict.values(),
+        key=lambda x: x.get('Bid Number', ''),
+        reverse=True
+    )
+    
+    return sorted_bids
 
 
 
@@ -304,7 +422,7 @@ def download_document(url, save_dir="downloads", bid_data=None):
             dt = datetime.strptime(start_date, '%Y-%m-%d')
             year = str(dt.year)
             month = f"{dt.month:02d}"
-        except:
+        except (ValueError, TypeError):
             year = datetime.now().strftime('%Y')
             month = datetime.now().strftime('%m')
         
@@ -341,11 +459,43 @@ def download_document(url, save_dir="downloads", bid_data=None):
     save_path = os.path.join(final_save_dir, filename)
     
     try:
-        response = requests.get(url, stream=True, timeout=60)
+        # Use headers that mimic a real browser
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/pdf,*/*',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
+        
+        response = requests.get(url, stream=True, timeout=60, headers=headers)
         response.raise_for_status()
+        
+        # Check content-type header
+        content_type = response.headers.get('content-type', '').lower()
+        if 'html' in content_type:
+            print(f"Warning: URL returned HTML instead of PDF (likely login page)")
+            # Still download for debugging, but warn
+        
         with open(save_path, 'wb') as f:
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
+        
+        # Validate the downloaded file is actually a PDF
+        with open(save_path, 'rb') as f:
+            header = f.read(10)
+            if not header.startswith(b'%PDF-'):
+                # Check if it's HTML
+                try:
+                    text = header.decode('utf-8', errors='ignore').lower()
+                    if '<html' in text or '<!doctype' in text or '<head' in text:
+                        print(f"Downloaded file is HTML, not PDF. Portal likely requires login.")
+                        # Keep the file for debugging but return None
+                        os.rename(save_path, save_path + ".html")
+                        return None
+                except:
+                    pass
+                print(f"Downloaded file is not a valid PDF (header: {header[:10]})")
+                return None
+        
         return save_path
     except Exception as e:
         print(f"Error downloading {url}: {e}")
@@ -401,4 +551,3 @@ def extract_hyperlinks_from_pdf(pdf_path: str) -> List[str]:
         print(f"Error extracting links from PDF {pdf_path}: {e}")
     
     return list(set(links))  # Deduplicate
-

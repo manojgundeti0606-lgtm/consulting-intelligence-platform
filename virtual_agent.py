@@ -32,7 +32,51 @@ class BidReaderAgent:
     
     def __init__(self, pdf_path: str):
         self.pdf_path = pdf_path
+        self.is_valid_pdf = self._validate_pdf()
         self._setup_ai()
+    
+    def _validate_pdf(self) -> bool:
+        """Check if the file is a valid PDF before processing."""
+        if not os.path.exists(self.pdf_path):
+            print(f"Virtual User: File not found: {self.pdf_path}")
+            return False
+        
+        # Check file size (PDFs are typically > 1KB)
+        file_size = os.path.getsize(self.pdf_path)
+        if file_size < 100:
+            print(f"Virtual User: File too small ({file_size} bytes) - likely not a valid PDF")
+            return False
+        
+        # Check PDF magic bytes (header should start with %PDF-)
+        try:
+            with open(self.pdf_path, 'rb') as f:
+                header = f.read(10)
+                if not header.startswith(b'%PDF-'):
+                    # Check if it's HTML (error page)
+                    text_header = header.decode('utf-8', errors='ignore').lower()
+                    if '<html' in text_header or '<!doctype' in text_header:
+                        print("Virtual User: Downloaded file is HTML, not PDF (likely login/error page)")
+                    else:
+                        print(f"Virtual User: File doesn't start with PDF header: {header[:20]}")
+                    return False
+        except Exception as e:
+            print(f"Virtual User: Error reading file header: {e}")
+            return False
+        
+        # Try to open with pdfplumber to verify
+        try:
+            with pdfplumber.open(self.pdf_path) as pdf:
+                if len(pdf.pages) == 0:
+                    print("Virtual User: PDF has no pages")
+                    return False
+            return True
+        except Exception as e:
+            error_msg = str(e)
+            if "Root" in error_msg:
+                print("Virtual User: Invalid PDF structure - file is corrupted or not a real PDF")
+            else:
+                print(f"Virtual User: Failed to open PDF: {e}")
+            return False
         
     def _setup_ai(self):
         """Initialize Gemini model names for page analysis"""
@@ -46,6 +90,8 @@ class BidReaderAgent:
 
     def _get_page_text(self, page_num: int) -> str:
         """Extract text from a specific page (0-indexed)"""
+        if not self.is_valid_pdf:
+            return ""
         try:
             with pdfplumber.open(self.pdf_path) as pdf:
                 if page_num < len(pdf.pages):
@@ -59,6 +105,10 @@ class BidReaderAgent:
         Scans the document to find the start and end pages of the Scope of Work.
         Returns: (start_page_index, end_page_index)
         """
+        # Return default range if PDF is invalid
+        if not self.is_valid_pdf:
+            return (0, 0)
+        
         print(f"Virtual User: Scanning {os.path.basename(self.pdf_path)} for SOW...")
         
         start_page = -1
@@ -179,6 +229,10 @@ class BidReaderAgent:
         """
         Main method: Finds, extracts, and summarizes the SOW.
         """
+        # Check if PDF was validated successfully
+        if not self.is_valid_pdf:
+            return "Error: The downloaded file is not a valid PDF document. This could be because:\n- The tender document requires login to the portal\n- The document link has expired\n- The portal returned an error page instead of the document\n\nPlease try downloading the document manually from the portal."
+        
         if not os.path.exists(self.pdf_path):
             return "Error: Document not found locally."
 
